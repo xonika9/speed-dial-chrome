@@ -1,0 +1,150 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Favorites is a Chrome browser extension that replaces the new tab page with a customizable bookmarks interface. It displays bookmarks as visual icons and includes features like search, news feeds, wallpapers, and games.
+
+## Development
+
+### Loading the Extension
+
+Since there is no build system, development involves:
+1. Load the unpacked extension in Chrome at `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Load unpacked" and select this directory
+4. After making changes, click the reload button on the extension card
+
+### Debugging
+
+**For the new tab page**: Open `page.html` in a new tab and use Chrome DevTools (F12)
+
+**For background scripts**: Go to `chrome://extensions/` → click "service worker" or "background page" under the extension
+
+**Keyboard shortcuts (debug mode only)**:
+- F6: Reload background page and all extension views
+
+## Architecture
+
+### Entry Points
+
+- **`page.html`**: Main new tab page loader. Parses URL parameters, applies theme styles from localStorage, waits for background API to be ready, then initializes the UI component specified by the `ui` parameter (default: `NewtabUI`)
+
+- **`background.js`**: Core extension logic (500KB). Contains all API modules and UI component definitions. This is a monolithic file that defines:
+  - API modules via `defineAPI(name, definition)`
+  - Custom Web Components via inline HTML templates
+  - Initialization functions like `initNewtabUI(window)`
+
+- **`sw.js`**: Service worker for caching resources (icons, wallpapers)
+
+### Module System
+
+The codebase uses a custom module system built around `defineAPI()`:
+
+```javascript
+defineAPI("moduleName", {
+  await: ["otherModule"],  // Optional dependencies
+  init() { /* initialization code */ },
+  sessionListeners: { /* Chrome API listeners that wait for init */ },
+  listeners: { /* Chrome API listeners that run immediately */ }
+})
+```
+
+Key API modules:
+- `api.bookmarks` - Chrome Bookmarks API wrapper with caching
+- `api.settings` - Extension settings persistence
+- `api.theme` - Theme CSS generation and management
+- `api.icons` - Icon loading and caching (uses chrome://favicon or web service)
+- `api.feeds` - RSS feed fetching and parsing
+- `api.extensionEvent` - Event bus for view creation/removal
+- `api.ui` - Reference to the window object where UI components are registered
+
+### UI Component Architecture
+
+UI components are defined as Web Components with Shadow DOM. All components are defined inline within `background.js` using this pattern:
+
+```javascript
+// Template HTML is inlined as a string
+{const t = document.createElement("template");
+t.innerHTML = `<style>...</style><div>...</div>`;
+for(const el of t.content.querySelectorAll("[data-i18n]"))
+  el.textContent = chrome.i18n.getMessage(el.dataset.i18n);
+
+function initComponentNameUI(window) {
+  if(window.ComponentNameUI) return window.ComponentNameUI;
+  // Init dependencies first
+  initDependencyUI(window);
+  with(window) {
+    class ComponentNameUI extends BaseClass {
+      init(shadowRoot) { /* initialization */ }
+      bind() { /* attach event listeners */ }
+      unbind() { /* cleanup */ }
+    }
+    defineCustomElement("a-component-name-ui", ComponentNameUI, t);
+    return window.ComponentNameUI = ComponentNameUI;
+  }
+}
+window.api.ui["initComponentNameUI"] = initComponentNameUI;}}
+```
+
+**Key UI Components**:
+- `NewtabUI` - Main new tab view container (MultiviewUI subclass)
+- `BookmarksUI` - Displays bookmark grid/folder
+- `DashUI` - Settings/dashboard view
+- `DialogUI` - Base dialog class
+- `MenuUI` - Context menus
+
+**Theming**: Themes are CSS files in `/themes/` that are loaded as text, stored in localStorage (`style/theme`), and injected into `<style id="style-theme">` on page.html
+
+### Internationalization
+
+- Strings defined in `_locales/[locale]/messages.json`
+- Access via `chrome.i18n.getMessage("key")`
+- HTML templates use `data-i18n="key"` attributes that are replaced at component initialization
+
+### Storage
+
+- **Chrome Storage**: Settings via `chrome.storage.local` (api.settings)
+- **localStorage**: Theme styles (style/theme, style/background, etc.)
+- **Permissions**: `storage` and `unlimitedStorage` (for opaque images/icons)
+
+### Web Service Integration
+
+The extension optionally queries `https://api.web-accessories.com` to:
+- Determine website icon URLs
+- Find search page URLs
+- Discover RSS feed URLs
+
+**Note**: Server logs are retained for 14 days (see README.txt for privacy policy)
+
+### Important Constants
+
+- Extension ID: `kjkbcegjfanmgocnecnngfcmmojheiam` (production)
+- Server URL switches between production and localhost based on extension ID
+- Minimum Chrome version: 66.0.0
+
+## File Structure Notes
+
+- `/themes/` - 80+ CSS theme files (not loaded as stylesheets, but read as text)
+- `/ui/` - Contains subdirectories with static assets (SVG icons, etc.) - UI components are NOT separate files
+- `/_locales/` - i18n message files for 40+ languages
+- `/wallpapers/` - Background images
+- `/data/` - Static data like games.json
+
+## Code Patterns
+
+### Custom Elements
+
+All UI components extend `CustomElement` base class which provides:
+- `init(shadowRoot)` - Called once when component is created
+- `bind()` - Called when attached to DOM, attach event listeners here
+- `unbind()` - Cleanup before removal
+
+### Event Dispatching
+
+Components dispatch custom events using `dispatchEvent(new Event('name', { bubbles: true }))`
+
+### Shadow DOM
+
+Styles are encapsulated via Shadow DOM. Themes use CSS custom properties (variables) to allow dynamic theming.
