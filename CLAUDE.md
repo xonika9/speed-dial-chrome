@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Favorites is a Chrome browser extension that replaces the new tab page with a customizable bookmarks interface. It displays bookmarks as visual icons and includes features like search, news feeds, wallpapers, and games.
+Favorites is a Chrome browser extension (Manifest V2) that replaces the new tab page with a customizable bookmarks interface. It displays bookmarks as visual icons and includes features like search, news feeds, wallpapers, and games.
+
+**Note**: This extension uses Manifest V2, which Chrome is deprecating. The background script runs as an event page (`"persistent": false`), not a service worker.
 
 ## Development
 
@@ -25,18 +27,22 @@ Since there is no build system, development involves:
 **Keyboard shortcuts (debug mode only)**:
 - F6: Reload background page and all extension views
 
+### Content Security Policy
+
+The manifest defines a strict CSP with script hashes. If modifying `page.html` inline scripts, you must update the SHA-256 hashes in `manifest.json` under `content_security_policy`.
+
 ## Architecture
 
 ### Entry Points
 
 - **`page.html`**: Main new tab page loader. Parses URL parameters, applies theme styles from localStorage, waits for background API to be ready, then initializes the UI component specified by the `ui` parameter (default: `NewtabUI`)
 
-- **`background.js`**: Core extension logic (500KB). Contains all API modules and UI component definitions. This is a monolithic file that defines:
+- **`background.js`**: Core extension logic (~10K lines). Contains all API modules and UI component definitions. This is a monolithic file that defines:
   - API modules via `defineAPI(name, definition)`
   - Custom Web Components via inline HTML templates
   - Initialization functions like `initNewtabUI(window)`
 
-- **`sw.js`**: Service worker for caching resources (icons, wallpapers)
+- **`sw.js`**: Service worker for caching resources from `cache.web-accessories.com` (icons, wallpapers)
 
 ### Module System
 
@@ -109,6 +115,12 @@ window.api.ui["initComponentNameUI"] = initComponentNameUI;}}
 - **localStorage**: Theme styles (style/theme, style/background, etc.)
 - **Permissions**: `storage` and `unlimitedStorage` (for opaque images/icons)
 
+### Permissions
+
+**Mandatory**: bookmarks, storage, unlimitedStorage, activeTab, contextMenus, alarms, chrome://favicon/*
+
+**Optional** (requested on-demand): host permissions for RSS feeds (`http://*/`, `https://*/`), clipboardRead, clipboardWrite
+
 ### Web Service Integration
 
 The extension optionally queries `https://api.web-accessories.com` to:
@@ -126,7 +138,7 @@ The extension optionally queries `https://api.web-accessories.com` to:
 
 ## File Structure Notes
 
-- `/themes/` - 80+ CSS theme files (not loaded as stylesheets, but read as text)
+- `/themes/` - 60 theme directories with CSS files (not loaded as stylesheets, but read as text)
 - `/ui/` - Contains subdirectories with static assets (SVG icons, etc.) - UI components are NOT separate files
 - `/_locales/` - i18n message files for 40+ languages
 - `/wallpapers/` - Background images
