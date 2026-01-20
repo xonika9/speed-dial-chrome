@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Use exa search mcp for web-search.
+
+Use context7 mcp to find tech documentation.
+
 ## Project Overview
 
 Favorites is a Chrome browser extension (Manifest V2) that replaces the new tab page with a customizable bookmarks interface. It displays bookmarks as visual icons and includes features like search, news feeds, wallpapers, and games.
