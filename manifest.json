@@ -1,40 +1,72 @@
 {
+   "manifest_version": 3,
+   "name": "Favorites - New Tab Page",
+   "short_name": "Favorites",
+   "version": "2.0.0",
+   "description": "__MSG_extension_description__",
+   "default_locale": "en",
+   "minimum_chrome_version": "109",
+
    "background": {
-      "persistent": false,
-      "scripts": [ "background.js" ]
+      "service_worker": "src/background.js",
+      "type": "module"
    },
-   "browser_action": {
+
+   "action": {
       "default_icon": {
-         "128": "icon/icon-128.png",
          "16": "icon/icon-16.png",
          "24": "icon/icon-24.png",
          "32": "icon/icon-32.png",
          "48": "icon/icon-48.png",
-         "64": "icon/icon-64.png"
+         "64": "icon/icon-64.png",
+         "128": "icon/icon-128.png"
       },
       "default_title": "Favorites"
    },
+
    "chrome_url_overrides": {
       "newtab": "page.html?theme&ui=NewtabUI&title=new_tab"
    },
-   "content_security_policy": "script-src 'self' 'sha256-A/IyGx3CvTqddF34389b1TYh3Cl8EJlSf39Ie4Rd2+U=' 'sha256-CY24PhkGLFieOjwhe5oZL7eGEIwssr7M8g9jOwm/rEU='; object-src 'self';",
-   "default_locale": "en",
-   "description": "__MSG_extension_description__",
+
+   "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self';"
+   },
+
    "icons": {
-      "128": "icon/icon-128.png",
       "16": "icon/icon-16.png",
       "24": "icon/icon-24.png",
       "32": "icon/icon-32.png",
-      "48": "icon/icon-48.png"
+      "48": "icon/icon-48.png",
+      "128": "icon/icon-128.png"
    },
+
    "incognito": "spanning",
+
+   "permissions": [
+      "activeTab",
+      "contextMenus",
+      "bookmarks",
+      "alarms",
+      "storage",
+      "unlimitedStorage",
+      "favicon",
+      "offscreen",
+      "scripting"
+   ],
+
+   "host_permissions": [],
+
+   "optional_host_permissions": [
+      "http://*/",
+      "https://*/"
+   ],
+
+   "optional_permissions": [
+      "clipboardRead",
+      "clipboardWrite"
+   ],
+
    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAheFjaabtBbq2yscLDOWbB10jwJPnN326SWPQ31zPb7OGrIp3TPPWVNV2YhkWozVuSB0YE27jgiIux79jTmWR9kDdM+evQ5azOhHuxM3KgTTbGtsyhDeH5gm6qsVxveCF14bnZG2OK5D3PlZNjWHBYP6LFmKwK7gYY3HELAaswPOVNeSfHSI8rBZhHmenv6dlAHbKn9H+V8000/vc/Bd8YlhbyVU1H/KeEWoA5yC5Th84cWXBp7dFFPjYNIGDIMgoT04ewEuDCRVkmi+NNMlwhx+UHvWl1oPwoiFSo3YKgLvt96pu1bSGwDOcxmbZJFDdW66HgqJ6Xcf4nOZZMc6d8wIDAQAB",
-   "manifest_version": 2,
-   "minimum_chrome_version": "66.0.0",
-   "name": "Favorites - New Tab Page",
-   "optional_permissions": [ "http://*/", "https://*/", "clipboardRead", "clipboardWrite" ],
-   "permissions": [ "activeTab", "contextMenus", "bookmarks", "alarms", "chrome://favicon/*", "storage", "unlimitedStorage" ],
-   "short_name": "Favorites",
-   "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "1.18.0"
+
+   "update_url": "https://clients2.google.com/service/update2/crx"
 }
