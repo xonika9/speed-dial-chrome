@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Use exa search mcp for web-search.
+Use web-search-prime mcp for web-search.
 
 Use context7 mcp to find tech documentation.
 
