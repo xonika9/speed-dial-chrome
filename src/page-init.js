@@ -99,50 +99,68 @@ async function updateThemeStyle() {
  * Initialize for MV3
  */
 async function initMV3() {
-  // Load UI loader
-  await import('./ui/loader.js');
+  console.log('[MV3 Init] Starting...');
 
   // Wait for service worker to be ready
   await new Promise((resolve, reject) => {
+    console.log('[MV3 Init] Pinging service worker...');
     chrome.runtime.sendMessage({ action: 'ping' }, response => {
       if (chrome.runtime.lastError) {
+        console.log('[MV3 Init] Ping failed, retrying...', chrome.runtime.lastError);
         // Service worker not ready, wait and retry
         setTimeout(() => {
           chrome.runtime.sendMessage({ action: 'ping' }, () => resolve());
         }, 100);
       } else {
+        console.log('[MV3 Init] Service worker ready');
         resolve();
       }
     });
   });
 
+  console.log('[MV3 Init] Loading background.js...');
+
   // For now, load UI from old background.js (UI components still there)
   // This is a transitional step - UI components will be migrated later
   const script = document.createElement('script');
   script.src = 'background.js';
+  script.onerror = (e) => {
+    console.error('[MV3 Init] Failed to load background.js:', e);
+  };
   script.onload = async () => {
+    console.log('[MV3 Init] background.js loaded');
+    console.log('[MV3 Init] window.apiReady =', window.apiReady);
+
     // Wait for apiReady
     if (window.apiReady) {
-      const api = await window.apiReady;
-      const ui = new (api.ui["init" + parameters.ui](window))();
-      document.body.appendChild(ui);
+      try {
+        const api = await window.apiReady;
+        console.log('[MV3 Init] API ready, creating UI:', parameters.ui);
+        const ui = new (api.ui["init" + parameters.ui](window))();
+        document.body.appendChild(ui);
 
-      // Dispatch events through messaging
-      chrome.runtime.sendMessage({
-        action: 'dispatchEvent',
-        eventName: 'session/view-created',
-        waitForResponse: false
-      });
-
-      window.addEventListener("beforeunload", () => {
+        // Dispatch events through messaging
         chrome.runtime.sendMessage({
           action: 'dispatchEvent',
-          eventName: 'session/view-removed',
+          eventName: 'session/view-created',
           waitForResponse: false
         });
-      });
 
-      await ui.isReady;
+        window.addEventListener("beforeunload", () => {
+          chrome.runtime.sendMessage({
+            action: 'dispatchEvent',
+            eventName: 'session/view-removed',
+            waitForResponse: false
+          });
+        });
+
+        await ui.isReady;
+        console.log('[MV3 Init] UI ready');
+      } catch (err) {
+        console.error('[MV3 Init] Error initializing UI:', err);
+      }
+    } else {
+      console.error('[MV3 Init] window.apiReady is not defined!');
     }
   };
   document.head.appendChild(script);

@@ -4,6 +4,7 @@ All portions of this file are the confidential and proprietary intellectual prop
 Use of this file is permitted only within the Favorites Google Chrome™ extension as published on the Google Chrome Web Store™.
 For more information, see README.txt in the root directoy of this extension. Thank you!
 */
+console.log('[background.js] Version 2 - MV3 page context fixes');
 const api = {};
 {
 	api.SERVER_URL = (chrome.runtime.id == "kjkbcegjfanmgocnecnngfcmmojheiam") ? 'https://api.web-accessories.com' : 'http://localhost';
@@ -20,17 +21,26 @@ const api = {};
 	}
 	const initAPISessionListeners = function(name) {
 		traverseAPIEventListeners(name, "sessionListeners", (chromeAPIName, chromeAPIEventName, listener) => {
-			chrome[chromeAPIName][chromeAPIEventName].addListener((a1,a2,a3,a4,a5) => api[name].isReady.then(()=>listener(a1,a2,a3,a4,a5)));
+			// MV3: Some APIs only available in service worker context, not in page
+			if (chrome[chromeAPIName] && chrome[chromeAPIName][chromeAPIEventName]) {
+				chrome[chromeAPIName][chromeAPIEventName].addListener((a1,a2,a3,a4,a5) => api[name].isReady.then(()=>listener(a1,a2,a3,a4,a5)));
+			}
 		});
 	}
 	const initAPIListeners = function(name) {
 		traverseAPIEventListeners(name, "listeners", (chromeAPIName, chromeAPIEventName, listener) => {
-			chrome[chromeAPIName][chromeAPIEventName].addListener(listener);
+			// MV3: Some APIs only available in service worker context, not in page
+			if (chrome[chromeAPIName] && chrome[chromeAPIName][chromeAPIEventName]) {
+				chrome[chromeAPIName][chromeAPIEventName].addListener(listener);
+			}
 		});
 	}
 	const suspendAPIListeners = function(name) {
 		traverseAPIEventListeners(name, "listeners", (chromeAPIName, chromeAPIEventName, listener) => {
-			chrome[chromeAPIName][chromeAPIEventName].removeListener(listener);
+			// MV3: Some APIs only available in service worker context, not in page
+			if (chrome[chromeAPIName] && chrome[chromeAPIName][chromeAPIEventName]) {
+				chrome[chromeAPIName][chromeAPIEventName].removeListener(listener);
+			}
 		});
 	}
 	const initAPI = function(name) {
@@ -54,15 +64,27 @@ const api = {};
 	var defineAPI = function(name, def) {
 		api[name] = def;
 	}
-	var apiReady = new Promise(
-			resolve=>window.addEventListener("load", resolve)
-		)
+	// MV3 compatibility: check if load already fired
+	var apiReady = new Promise(resolve => {
+			if (document.readyState === 'complete') {
+				resolve();
+			} else {
+				window.addEventListener("load", resolve);
+			}
+		})
 		.then(()=>
 			Promise.all(Object.keys(api).map(initAPI))
 		)
 		.then(()=>(window.api=api))
-	chrome.runtime.onSuspend.addListener(()=>Object.keys(api).forEach(suspendAPIListeners));
-	chrome.runtime.onSuspendCanceled.addListener(()=>Object.keys(api).forEach(initAPIListeners));
+	// MV3: Export apiReady to window for page context access
+	window.apiReady = apiReady;
+	// MV3: onSuspend/onSuspendCanceled don't exist in service workers
+	if (chrome.runtime.onSuspend) {
+		chrome.runtime.onSuspend.addListener(()=>Object.keys(api).forEach(suspendAPIListeners));
+	}
+	if (chrome.runtime.onSuspendCanceled) {
+		chrome.runtime.onSuspendCanceled.addListener(()=>Object.keys(api).forEach(initAPIListeners));
+	}
 	api.ui = window;
 }
 {
@@ -366,12 +388,19 @@ const api = {};
         "128": "/icon-128.png"
 	};
 	const update = function() {
+		// MV3: chrome.action only available in service worker, not in page context
+		const actionAPI = chrome.action || chrome.browserAction;
+		if (!actionAPI || typeof actionAPI.setPopup !== 'function') {
+			console.log('[browserAction] API not available in this context');
+			return;
+		}
+
 		switch(settings.get("browser-action")) {
 			case "popup":
-				chrome.browserAction.setPopup({ popup: "/page.html?theme&ui=PopupUI&style=width:800px;height:600px;overflow:hidden;"});
+				actionAPI.setPopup({ popup: "/page.html?theme&ui=PopupUI&style=width:800px;height:600px;overflow:hidden;"});
 			break;
 			default:
-				chrome.browserAction.setPopup({ popup: "" });
+				actionAPI.setPopup({ popup: "" });
 			break;
 		}
 	}
@@ -738,12 +767,23 @@ const api = {};
 }
 {
 	const update = function() {
+		// MV3: chrome.action only available in service worker, not in page context
+		const actionAPI = chrome.action || chrome.browserAction;
+		if (!actionAPI || typeof actionAPI.setBadgeText !== 'function') return;
+
 		var unreadItems = api.feedSubscriptionsStats.getUnreadItems("0");
 		var text = "" + (unreadItems ? api.stringUtil.formatCounter1K(unreadItems) : "");
-		chrome.browserAction.setBadgeText({text});
+		actionAPI.setBadgeText({text});
 	}
 	const init = function() {
-		chrome.browserAction.setBadgeBackgroundColor({color : '#D8072B'});
+		// MV3: chrome.action only available in service worker, not in page context
+		const actionAPI = chrome.action || chrome.browserAction;
+		if (!actionAPI || typeof actionAPI.setBadgeBackgroundColor !== 'function') {
+			console.log('[feedSubscriptionsBadge] API not available in this context');
+			return;
+		}
+
+		actionAPI.setBadgeBackgroundColor({color : '#D8072B'});
 		addEventListener("feedSubscriptionsStats/change", update);
 	}
 	defineAPI("feedSubscriptionsBadge", {
@@ -1529,6 +1569,8 @@ const api = {};
 		else
 			return _url.protocol + '//' + hostname;
 	}
+	// MV3: Detect manifest version
+	const IS_MV3_ICONS = chrome.runtime.getManifest().manifest_version === 3;
 	const createFactory = function() {
 		return {
 			isApplicable : url => true,
@@ -1536,6 +1578,20 @@ const api = {};
 			createIcon : (url, _, cache) => {
 				const lookupURL = getLookupURL(url);
 				const cacheURL = api.iconsUtil.getCacheURL(lookupURL);
+
+				if (IS_MV3_ICONS) {
+					// MV3: First check Cache API, then try multiple favicon sources
+					return api.iconsUtil.loadIconFromCache(cache, cacheURL)
+						.catch(() =>
+							api.iconsUtil.cacheIconChrome(lookupURL, cache, cacheURL)
+								.catch(() => api.iconsUtil.cacheIconGoogle(lookupURL, cache, cacheURL))
+								.catch(() => api.iconsUtil.cacheIconDirect(lookupURL, cache, cacheURL))
+								.catch(() => api.iconsUtil.cacheIconReplacement(lookupURL, cache, cacheURL))
+						)
+						.then(() => api.iconsUtil.loadIconFromCache(cache, cacheURL));
+				}
+
+				// MV2: Original logic
 				return api.iconsUtil.loadIcon(cacheURL)
 					.catch(()=>
 						api.iconsUtil.cacheIconWA(lookupURL, cache, cacheURL)
@@ -1951,6 +2007,18 @@ const api = {};
 	const ICONS_DEFAULT_REPLACEMENT_COLOR = '#0692E9';
 	const CHROME_FAVICON_URL = 'chrome://favicon/size';
 	const ICON_REPLACEMENT_MAX_CHARS = 8;
+	// MV3: Detect manifest version for favicon API selection
+	const IS_MV3 = chrome.runtime.getManifest().manifest_version === 3;
+	// MV3: Get favicon URL using new API
+	const getFaviconUrl = function(pageUrl, size = 48) {
+		if (IS_MV3) {
+			const url = new URL(chrome.runtime.getURL('/_favicon/'));
+			url.searchParams.set('pageUrl', pageUrl);
+			url.searchParams.set('size', size.toString());
+			return url.toString();
+		}
+		return `chrome://favicon/size/${size}@1x/${pageUrl}`;
+	};
 	const getCacheURL = function(lookupURL) {
 		return 'https://cache.web-accessories.com/icon/' + lookupURL;
 	}
@@ -1962,6 +2030,15 @@ const api = {};
 			img.src = url;
 		})
 		.then(()=>createImageBitmap(img))
+	}
+	// MV3: Load icon from Cache API first, then fall back to network
+	const loadIconFromCache = async function(cache, cacheURL) {
+		const response = await cache.match(cacheURL);
+		if (response) {
+			const blob = await response.blob();
+			return createImageBitmap(blob);
+		}
+		throw new Error('Not in cache');
 	}
 	const cacheIconOptions = { mode : 'no-cors', headers : new Headers({ 'accept' : 'image/webp,image/apng,image/*,*/*;q=0.8' }) };
 	const cacheIcon = function(iconURL, cache, cacheURL) {
@@ -1979,11 +2056,71 @@ const api = {};
 		canvas.width = canvas.height = 48;
 		return canvas.getContext('2d');
 	})();
+	// MV3: Try to fetch favicon directly from site using fetch API (handles CORS better)
+	const cacheIconDirect = function(lookupURL, cache, cacheURL) {
+		// Extract origin from lookupURL
+		let faviconUrl;
+		try {
+			const url = new URL(lookupURL);
+			faviconUrl = url.origin + '/favicon.ico';
+		} catch {
+			return Promise.reject('Invalid URL');
+		}
+		return fetch(faviconUrl, { mode: 'cors' })
+			.then(response => {
+				if (!response.ok) throw new Error('Fetch failed');
+				return response.blob();
+			})
+			.then(blob => {
+				if (blob.size < 100) throw new Error('Icon too small');
+				return createImageBitmap(blob);
+			})
+			.then(imageBitmap => {
+				if (imageBitmap.width < 8 || imageBitmap.height < 8)
+					throw new Error('Icon dimensions too small');
+				const ctx = ctxFavicon;
+				ctx.globalCompositeOperation = "copy";
+				ctx.imageSmoothingEnabled = true;
+				ctx.imageSmoothingQuality = "medium";
+				ctx.drawImage(imageBitmap, 0, 0, ctx.canvas.width, ctx.canvas.height);
+				return new Promise(resolve => ctx.canvas.toBlob(resolve));
+			})
+			.then(blob => cache.put(cacheURL, new Response(blob)));
+	}
+	// MV3: Use Google's favicon service as last resort
+	const cacheIconGoogle = function(lookupURL, cache, cacheURL) {
+		// Google's favicon service - works for most sites
+		const googleFaviconUrl = 'https://www.google.com/s2/favicons?sz=64&domain_url=' + encodeURIComponent(lookupURL);
+		return fetch(googleFaviconUrl)
+			.then(response => {
+				if (!response.ok) throw new Error('Google favicon failed');
+				return response.blob();
+			})
+			.then(blob => {
+				if (blob.size < 100) throw new Error('Icon too small');
+				return createImageBitmap(blob);
+			})
+			.then(imageBitmap => {
+				// Google returns 16x16 default icon for unknown sites - accept it but scale up
+				const ctx = ctxFavicon;
+				ctx.globalCompositeOperation = "copy";
+				ctx.imageSmoothingEnabled = true;
+				ctx.imageSmoothingQuality = "medium";
+				ctx.drawImage(imageBitmap, 0, 0, ctx.canvas.width, ctx.canvas.height);
+				return new Promise(resolve => ctx.canvas.toBlob(resolve));
+			})
+			.then(blob => cache.put(cacheURL, new Response(blob)));
+	}
 	const cacheIconChrome = function(lookupURL, cache, cacheURL) {
-		return loadIcon('chrome://favicon/size/48@1x/' + lookupURL)
+		return loadIcon(getFaviconUrl(lookupURL, 48))
 			.then(imageBitmap=>{
-				if((imageBitmap.width == 16) && (imageBitmap.height == 16))
+				// MV3: Accept all icon sizes (Chrome favicon API often returns 16x16)
+				// MV2: Reject 16x16 icons and fall back to other methods
+				if(!IS_MV3 && (imageBitmap.width == 16) && (imageBitmap.height == 16))
 					return Promise.reject();
+				// Check if image is valid (not empty 1x1 pixel)
+				if (imageBitmap.width < 2 || imageBitmap.height < 2)
+					return Promise.reject('Empty favicon');
 				const ctx = ctxFavicon;
 				ctx.globalCompositeOperation = "copy";
 				ctx.imageSmoothingEnabled = true;
@@ -2099,9 +2236,12 @@ const api = {};
 		await : ["uri"],
 		getCacheURL,
 		loadIcon,
+		loadIconFromCache,
 		cacheIcon,
 		cacheIconWA,
 		cacheIconChrome,
+		cacheIconDirect,
+		cacheIconGoogle,
 		cacheIconReplacement,
 		addWatermark,
 		renderIcon
@@ -2429,6 +2569,10 @@ const api = {};
 }
 {
 	const init = function() {
+		// MV3: Don't register custom service worker - extension already has one via manifest
+		if (chrome.runtime.getManifest().manifest_version === 3) {
+			return Promise.resolve();
+		}
 		navigator.serviceWorker.addEventListener("controllerchange", event=>{
 			console.log("controller change!", event);
 		});
