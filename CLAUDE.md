@@ -6,6 +6,53 @@ Use web-search to find actual data.
 
 Use context7 mcp to find tech documentation.
 
+## Browser Automation with dev-browser
+
+**IMPORTANT**: Always use the `dev-browser` skill for browser automation and testing. Do NOT use chrome-devtools MCP tools.
+
+### Browser Modes
+
+Ask the user which mode to use if unclear:
+
+**Standalone Mode** (default): Launches a new Chromium browser
+```bash
+cd /Users/xonika/.claude/plugins/cache/dev-browser-marketplace/dev-browser/66682fb0513a/skills/dev-browser && ./server.sh &
+```
+Add `--headless` flag if user requests it. Wait for "Ready" message.
+
+**Extension Mode**: Connects to user's existing browser (Chrome/Edge/etc.) with dev-browser extension
+```bash
+cd /Users/xonika/.claude/plugins/cache/dev-browser-marketplace/dev-browser/66682fb0513a/skills/dev-browser && npm run start-extension &
+```
+Wait for "Extension connected" message. User will confirm when ready.
+
+### Controlling the Browser
+
+Scripts work the same in both modes:
+```bash
+cd /Users/xonika/.claude/plugins/cache/dev-browser-marketplace/dev-browser/66682fb0513a/skills/dev-browser && npx tsx <<'EOF'
+import { connect, waitForPageLoad } from "@/client.js";
+
+const client = await connect();
+const page = await client.page("pagename");
+
+await page.goto("https://example.com");
+await waitForPageLoad(page);
+
+console.log({ title: await page.title(), url: page.url() });
+await client.disconnect();
+EOF
+```
+
+### Key Guidelines
+
+- **Always run scripts from the dev-browser skill directory**: `/Users/xonika/.claude/plugins/cache/dev-browser-marketplace/dev-browser/66682fb0513a/skills/dev-browser`
+- **Use named pages**: `client.page("name")` to organize browser tabs (e.g., "login", "checkout", "testing")
+- **Page state persists**: Scripts are stateless, but pages remain open between executions
+- **Element discovery**: Use `client.getAISnapshot("pagename")` to get accessibility tree with element references
+- **Visual feedback**: Take screenshots with `page.screenshot({ path: "tmp/screenshot.png" })`
+- **Small focused scripts**: Write one script per action, evaluate state, then decide next step
+
 ## Project Overview
 
 Favorites is a Chrome browser extension (Manifest V2) that replaces the new tab page with a customizable bookmarks interface. It displays bookmarks as visual icons and includes features like search, news feeds, wallpapers, and games.
