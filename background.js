@@ -3085,8 +3085,17 @@ const api = {};
 			case "file":
 				if(!settings.get("background-file"))
 					return Promise.resolve(BACKGROUND_PLACEHOLDER_PATH);
-				return fetch(settings.get("background-file").url, {cache:'reload'}) // this clears Chrome's image cache!
-					.then(response=>Promise.resolve(response.ok ? settings.get("background-file").url : BACKGROUND_PLACEHOLDER_PATH))
+				// MV3: Use Cache API to retrieve the file instead of direct fetch
+				return caches.open('wallpaper')
+					.then(cache => cache.match(settings.get("background-file").url))
+					.then(response => {
+						if (response) {
+							// File found in cache, create blob URL for use in CSS
+							return response.blob().then(blob => URL.createObjectURL(blob));
+						}
+						return BACKGROUND_PLACEHOLDER_PATH;
+					})
+					.catch(() => BACKGROUND_PLACEHOLDER_PATH)
 			break;
 			default:
 				return Promise.resolve(BACKGROUND_PLACEHOLDER_PATH);
@@ -3339,6 +3348,7 @@ const api = {};
 	const init = function() {
 		const noop = () => {};
 		f = document.createElement("iframe");
+		f.style.display = "none";
 		f.onload = ()=>f.contentWindow.chrome.runtime.connect({name:"p"});
 		f.src = "copyright.txt";
 		chrome.runtime.onConnect.addListener(noop);
