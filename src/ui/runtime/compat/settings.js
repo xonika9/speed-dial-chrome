@@ -110,34 +110,17 @@ export function createSettingsCompat(sendMessage, eventBus) {
     },
     set(key, value, callback) {
       const result = sendMessage('setSetting', { key, value })
-        .then(() => ensureCache())
-        .then(() => {
-          cache[key] = value;
-          eventBus.dispatch(`settings/${key}`, value);
-          return value;
-        });
+        .then(() => value);
       return withOptionalCallback(result, callback);
     },
     setMultiple(values, callback) {
       const result = sendMessage('setMultipleSettings', { settings: values })
-        .then(() => ensureCache())
-        .then(() => {
-          for (const [key, value] of Object.entries(values || {})) {
-            cache[key] = value;
-            eventBus.dispatch(`settings/${key}`, value);
-          }
-          return values;
-        });
+        .then(() => values);
       return withOptionalCallback(result, callback);
     },
     remove(key, callback) {
       const result = sendMessage('removeSetting', { key })
-        .then(() => ensureCache())
-        .then(() => {
-          delete cache[key];
-          eventBus.dispatch(`settings/${key}`, undefined);
-          return true;
-        });
+        .then(() => true);
       return withOptionalCallback(result, callback);
     },
     getAll(callback) {
