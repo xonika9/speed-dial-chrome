@@ -243,7 +243,12 @@ async function initUI() {
     });
   });
 
-  await ui.isReady;
+  await Promise.race([
+    ui.isReady,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('UI component did not become ready in 15s')), 15000)
+    )
+  ]);
 }
 
 async function bootstrap() {

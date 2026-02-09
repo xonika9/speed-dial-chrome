@@ -71,7 +71,14 @@ export function createSettingsCompat(sendMessage, eventBus) {
     }
 
     if (!initPromise) {
-      initPromise = sendMessage('getAllSettings')
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('[Compat][settings] Timed out waiting for settings (10s)')), 10000)
+      );
+
+      initPromise = Promise.race([
+        sendMessage('getAllSettings'),
+        timeout
+      ])
         .then(settings => {
           cache = { ...(settings || {}) };
           initialized = true;
@@ -132,9 +139,7 @@ export function createSettingsCompat(sendMessage, eventBus) {
         .then(settingsSnapshot => {
           cache = { ...(settingsSnapshot || {}) };
           initialized = true;
-          Object.keys(cache).forEach(key => {
-            eventBus.dispatch(`settings/${key}`, cache[key]);
-          });
+          // events dispatched by storage.onChanged listener
           return { ...cache };
         });
       return withOptionalCallback(result, callback);
@@ -148,9 +153,7 @@ export function createSettingsCompat(sendMessage, eventBus) {
         .then(settingsSnapshot => {
           cache = { ...(settingsSnapshot || {}) };
           initialized = true;
-          Object.keys(cache).forEach(key => {
-            eventBus.dispatch(`settings/${key}`, cache[key]);
-          });
+          // events dispatched by storage.onChanged listener
           return { ...cache };
         });
       return withOptionalCallback(result, callback);

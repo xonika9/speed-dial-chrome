@@ -116,7 +116,7 @@ const quotaLimits = {
 async function loadSettings() {
   if (settingsCache !== null) return settingsCache;
 
-  const result = await chrome.storage.local.get(null);
+  const result = await chrome.storage.local.get(Object.keys(defaults));
   settingsCache = { ...defaults, ...result };
   return settingsCache;
 }
