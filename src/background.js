@@ -40,29 +40,35 @@ registerHandler('waitUntilReady', async () => {
 // Initialize async modules
 async function initializeAPIs() {
   try {
-    // Core modules (order matters for dependencies)
+    // Required modules — page bootstrap depends on these handlers
     await initSettings();
     initMigration();
-    resolveAPIReady();
-
     initExtensionEvent();
     initBookmarks();
     initOffscreen();
     await initIcons();
     initTheme();
-    initBrowser();
-    initFeeds();
-    initFeedSubscriptions();
-    initFeedSubscriptionsStats();
-    initSearch();
-    initIconsUrlMapping();
-    initContextMenu();
-    initRemoteCache();
 
-    console.log('[MV3] All APIs initialized');
+    resolveAPIReady();
+    console.log('[MV3] Required APIs initialized');
+
+    // Optional modules — failure logged but does not block ready
+    try {
+      initBrowser();
+      initFeeds();
+      initFeedSubscriptions();
+      initFeedSubscriptionsStats();
+      initSearch();
+      initIconsUrlMapping();
+      initContextMenu();
+      initRemoteCache();
+      console.log('[MV3] All APIs initialized');
+    } catch (optionalError) {
+      console.warn('[MV3] Optional API initialization failed:', optionalError);
+    }
   } catch (error) {
     rejectAPIReady(error);
-    console.error('[MV3] Failed to initialize APIs:', error);
+    console.error('[MV3] Failed to initialize required APIs:', error);
   }
 }
 
