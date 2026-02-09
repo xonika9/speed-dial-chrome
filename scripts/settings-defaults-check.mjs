@@ -58,10 +58,35 @@ function collectUsedSettingKeys(files) {
   return keys;
 }
 
+const BINDING_KEY_PATTERN = /data-binding-key="([^"]+)"/g;
+const NON_SETTINGS_BINDING_KEYS = new Set(['settings']);
+
+function collectBindingSettingKeys(files) {
+  const keys = new Set();
+  for (const file of files) {
+    const source = readText(file);
+    for (const match of source.matchAll(BINDING_KEY_PATTERN)) {
+      let key = match[1];
+      if (key.endsWith('/synced')) {
+        key = key.slice(0, -'/synced'.length);
+      }
+      if (NON_SETTINGS_BINDING_KEYS.has(key)) {
+        continue;
+      }
+      keys.add(key);
+    }
+  }
+  return keys;
+}
+
 function main() {
   const defaults = parseDefaultKeys(readText(SETTINGS_FILE));
-  const usedKeys = collectUsedSettingKeys(collectSourceFiles(SRC_DIR));
-  const missing = Array.from(usedKeys).filter(key => !defaults.has(key)).sort();
+  const sourceFiles = collectSourceFiles(SRC_DIR);
+  const usedKeys = collectUsedSettingKeys(sourceFiles);
+  const bindingKeys = collectBindingSettingKeys(sourceFiles);
+
+  const allKeys = new Set([...usedKeys, ...bindingKeys]);
+  const missing = Array.from(allKeys).filter(key => !defaults.has(key)).sort();
 
   if (missing.length > 0) {
     console.error('[settings-defaults-check] FAILED');
@@ -74,7 +99,9 @@ function main() {
 
   console.log('[settings-defaults-check] OK');
   console.log(`- defaults keys: ${defaults.size}`);
-  console.log(`- used keys: ${usedKeys.size}`);
+  console.log(`- used keys (API calls): ${usedKeys.size}`);
+  console.log(`- used keys (data-binding-key): ${bindingKeys.size}`);
+  console.log(`- total unique keys: ${allKeys.size}`);
 }
 
 main();
