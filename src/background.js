@@ -53,19 +53,30 @@ async function initializeAPIs() {
     console.log('[MV3] Required APIs initialized');
 
     // Optional modules — failure logged but does not block ready
-    try {
-      initBrowser();
-      initFeeds();
-      initFeedSubscriptions();
-      initFeedSubscriptionsStats();
-      initSearch();
-      initIconsUrlMapping();
-      initContextMenu();
-      initRemoteCache();
-      console.log('[MV3] All APIs initialized');
-    } catch (optionalError) {
-      console.warn('[MV3] Optional API initialization failed:', optionalError);
+    const optionalModules = [
+      ['browser', initBrowser],
+      ['feeds', initFeeds],
+      ['feedSubscriptions', initFeedSubscriptions],
+      ['feedSubscriptionsStats', initFeedSubscriptionsStats],
+      ['search', initSearch],
+      ['iconsUrlMapping', initIconsUrlMapping],
+      ['contextMenu', initContextMenu],
+      ['remoteCache', initRemoteCache]
+    ];
+
+    const moduleStatus = {};
+    for (const [name, initFn] of optionalModules) {
+      try {
+        initFn();
+        moduleStatus[name] = 'ok';
+      } catch (error) {
+        moduleStatus[name] = error.message || 'failed';
+        console.warn(`[MV3] Optional module "${name}" failed:`, error);
+      }
     }
+
+    registerHandler('getModuleStatus', () => moduleStatus);
+    console.log('[MV3] All APIs initialized');
   } catch (error) {
     rejectAPIReady(error);
     console.error('[MV3] Failed to initialize required APIs:', error);

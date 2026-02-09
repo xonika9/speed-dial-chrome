@@ -196,8 +196,7 @@ async function loadConfiguredUIRuntime(requestedUI) {
 }
 
 async function initUI() {
-  await waitForServiceWorker();
-
+  // Service worker readiness guaranteed by bootstrap()
   const runtimeInfo = await loadConfiguredUIRuntime(parameters.ui);
   const { api } = runtimeInfo;
   window.api = api;

@@ -11,6 +11,8 @@ PATTERNS=(
   "runtime\\.getBackgroundPage"
   "tabs\\.executeScript\\("
   "scripting\\.executeScript\\("
+  "tabs\\[.executeScript"
+  "scripting\\[.executeScript"
   "new\\s+Function\\s*\\("
   "\\beval\\s*\\("
 )
