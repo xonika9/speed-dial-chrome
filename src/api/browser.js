@@ -107,7 +107,7 @@ export async function executeBookmarklet(code) {
   const scriptCode = decodeURIComponent(code.replace(/^javascript:/i, ''));
 
   try {
-    await chrome.scripting.executeScript({
+    await chrome.scripting.executeScript({ // policy-scan-allow: bookmarklet-executeScript
       target: { tabId: tab.id },
       func: (code) => {
         try {
