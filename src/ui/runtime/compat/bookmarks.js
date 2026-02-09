@@ -44,12 +44,24 @@ export function createBookmarksCompat(sendMessage, eventBus) {
       return withOptionalCallback(sendMessage('searchBookmarks', { query }), callback);
     },
     create(bookmark, callback) {
-      const result = withMutationDispatch(sendMessage('createBookmark', bookmark));
+      const result = withMutationDispatch(sendMessage('createBookmark', bookmark))
+        .then(node => {
+          if (node && node.id) {
+            eventBus.dispatch('bookmarks/created', { id: node.id, bookmark: node });
+          }
+          return node;
+        });
       return withOptionalCallback(result, callback);
     },
     safecreate(bookmark, callback) {
       const result = withMutationDispatch(sendMessage('createBookmarkSafe', bookmark))
-        .then(response => response?.bookmark || null);
+        .then(response => {
+          const node = response?.bookmark || null;
+          if (node && !response?.exists) {
+            eventBus.dispatch('bookmarks/created', { id: node.id, bookmark: node });
+          }
+          return node;
+        });
       return withOptionalCallback(result, callback);
     },
     safecreatemany(parentId, index, bookmarkTreeNodes, callback) {
@@ -81,11 +93,19 @@ export function createBookmarksCompat(sendMessage, eventBus) {
       return withOptionalCallback(result, callback);
     },
     remove(id, callback) {
-      const result = withMutationDispatch(sendMessage('removeBookmark', { id }));
+      const result = withMutationDispatch(sendMessage('removeBookmark', { id }))
+        .then(response => {
+          eventBus.dispatch('bookmarks/removed', { id, removeInfo: {} });
+          return response;
+        });
       return withOptionalCallback(result, callback);
     },
     removeTree(id, callback) {
-      const result = withMutationDispatch(sendMessage('removeBookmarkTree', { id }));
+      const result = withMutationDispatch(sendMessage('removeBookmarkTree', { id }))
+        .then(response => {
+          eventBus.dispatch('bookmarks/removed', { id, removeInfo: {} });
+          return response;
+        });
       return withOptionalCallback(result, callback);
     },
     getAllURLS(idOrArray, callback) {

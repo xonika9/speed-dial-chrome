@@ -59,8 +59,13 @@ export async function broadcast(message) {
   const tabs = await chrome.tabs.query({});
   const extensionOrigin = chrome.runtime.getURL('');
 
+  // Include tabs with extension URL and chrome://newtab/ tabs
+  // (our newtab override may be reported as chrome://newtab/ without
+  // the tabs permission). Tabs without a matching listener fail silently.
   const extensionTabs = tabs.filter(tab =>
-    tab.url && tab.url.startsWith(extensionOrigin)
+    (tab.url && tab.url.startsWith(extensionOrigin)) ||
+    tab.url === 'chrome://newtab/' ||
+    !tab.url
   );
 
   const results = await Promise.allSettled(

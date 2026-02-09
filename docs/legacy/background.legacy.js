@@ -4279,7 +4279,9 @@ return window.BookmarksGridview01Base=BookmarksGridview01Base;}}}
 		let id = event.detail.id;
 		let node = event.detail.bookmark;
 		if(node.parentId == this.folderId) {
-			this.addBookmark(node, api.feedSubscriptionsStats.getUnreadItems(id));
+			if(!this.hasBookmark(id)) {
+				this.addBookmark(node, api.feedSubscriptionsStats.getUnreadItems(id));
+			}
 			this.clearSelection();
 		}
 		else if(this.hasBookmark(node.parentId)) {
@@ -4296,7 +4298,7 @@ return window.BookmarksGridview01Base=BookmarksGridview01Base;}}}
 			this.removeBookmark(this.getBookmark(id));
 			this.clearSelection();
 		}
-		else if(this.hasBookmark(node.parentId)) {
+		else if(node && node.parentId && this.hasBookmark(node.parentId)) {
 			this.updateBookmarkIcon(this.getBookmark(node.parentId));
 		}
 	}
