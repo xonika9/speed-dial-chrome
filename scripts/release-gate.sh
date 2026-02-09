@@ -27,6 +27,9 @@ fi
 echo "[release-gate] Verifying runtime initializer parity..."
 node scripts/runtime-parity-check.mjs
 
+echo "[release-gate] Verifying settings defaults coverage..."
+node scripts/settings-defaults-check.mjs
+
 echo "[release-gate] Verifying forbidden API patterns..."
 if rg -n "chrome\\.extension\\.|runtime\\.getBackgroundPage|tabs\\.executeScript\\(|\\beval\\s*\\(" src; then
   echo "[release-gate] FAILED: forbidden patterns found"

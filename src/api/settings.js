@@ -5,6 +5,27 @@
 
 import { registerHandlers } from './messaging.js';
 
+const ICON_URL_MAPPING_DEFAULT = [
+  '# Syntax: A > B',
+  '# For each bookmark URL starting with A, an icon is loaded from B.',
+  '# Lines starting with # are ignored and can be used for comments.',
+  '',
+  ''
+].join('\n');
+
+const SEARCH_URL_MAPPING_DEFAULT = [
+  '# Syntax: A > B',
+  '# For each bookmark URL starting with A, a search URL is created ',
+  '# by appending a search term at the end of B.',
+  '# Lines starting with # are ignored and can be used for comments.',
+  '',
+  'https://www.nytimes.com > https://www.nytimes.com/search?sort=best&query=',
+  'https://www.google.de/maps > https://www.google.de/maps/place/',
+  'https://www.google.com/maps > https://www.google.com/maps/place/',
+  'https://www.youtube.com > https://www.youtube.com/results?search_query=',
+  ''
+].join('\n');
+
 // Default settings values
 const defaults = {
   'theme': 'default_white',
@@ -31,22 +52,49 @@ const defaults = {
   'feed-subscriptions': {},
   'feed-subscriptions-update': 'on-request',
   'home-folder': '1',
+  'root-folder': '1',
+  'show-navigation-bar': false,
+  'show-last-visited-folder': false,
+  'open-bookmarks-in-new-tab': false,
   'folder-color-mode': 'none',
   'icon-view': 'default',
   'icon-size': 'medium',
+  'icon-url-mapping': ICON_URL_MAPPING_DEFAULT,
   'show-favicon': true,
   'show-title': true,
   'title-position': 'bottom',
   'max-columns': 0,
+  'columns-max': 25,
+  'column-gap': 46,
+  'row-gap': 16,
   'background-type': 'theme',
+  'background-web': null,
+  'background-file': null,
   'background-color': '#ffffff',
   'background-image-url': '',
   'background-image-file': '',
+  'background-filter-active': false,
+  'background-filter-color': 'rgba(255,255,255,0.7)',
+  'background-filter-blend-mode': 'normal',
   'filter-enabled': false,
   'filter-blur': 0,
   'filter-brightness': 100,
   'filter-grayscale': 0,
-  'dock-style': 'default'
+  'dock-style': 'default',
+  'show-dock': false,
+  'dock-folder': '2',
+  'dock-dblclick': true,
+  'dock-background-type': 'theme',
+  'dock-background-color': '#606060',
+  'show-dash': false,
+  'dash-buttons': ['bookmarks', 'history', 'downloads', 'settings', 'extensions', 'games', 'news'],
+  'dash-clock': 'DC-1M',
+  'search-url-mapping': SEARCH_URL_MAPPING_DEFAULT,
+  'search-engine': 'Google',
+  'search-preferred-site': 'website',
+  'search-dblclick': true,
+  'search-site-shortcut-active': false,
+  'search-open-folder-shortcut-active': false
 };
 
 // In-memory cache for settings
