@@ -80,7 +80,11 @@ function setGlobal(name, value) {
   });
 }
 
+const EXPECTED_BOOTSTRAP_ACTIONS = new Set(['getAllSettings']);
+
 async function runRuntimeBootstrapSmokeCheck() {
+  const exercisedActions = new Set();
+
   const backups = {
     window: globalThis.window,
     location: globalThis.location,
@@ -188,17 +192,18 @@ async function runRuntimeBootstrapSmokeCheck() {
           return filePath;
         },
         sendMessage(message, callback) {
-          if (message.action === 'getAllSettings') {
-            callback({});
+          const { action } = message;
+          exercisedActions.add(action);
+
+          if (action === 'getAllSettings') {
+            callback({ ...storageData });
             return;
           }
-
-          if (message.action === 'dispatchEvent') {
+          if (action === 'dispatchEvent') {
             callback({ received: true });
             return;
           }
-
-          callback({});
+          callback({ error: `[runtime-parity-smoke] Unexpected action "${action}"` });
         }
       },
       storage: {
@@ -236,9 +241,16 @@ async function runRuntimeBootstrapSmokeCheck() {
       throw new Error('loadUIRuntime did not expose api.ui.initNewtabUI');
     }
 
+    const unexercised = Array.from(EXPECTED_BOOTSTRAP_ACTIONS)
+      .filter(a => !exercisedActions.has(a));
+    if (unexercised.length > 0) {
+      throw new Error('Bootstrap smoke did not exercise expected actions: ' + unexercised.join(', '));
+    }
+
     return {
       runtime: runtimeInfo.runtime,
-      resolvedRuntime: runtimeInfo.resolvedRuntime
+      resolvedRuntime: runtimeInfo.resolvedRuntime,
+      exercisedActions: Array.from(exercisedActions)
     };
   } finally {
     for (const key of Object.keys(backups)) {
@@ -277,6 +289,7 @@ async function main() {
   console.log(`- covered at runtime: ${coverage.legacyInitNames.size}`);
   console.log(`- smoke runtime: ${smokeInfo.runtime}`);
   console.log(`- smoke resolved runtime: ${smokeInfo.resolvedRuntime}`);
+  console.log(`- smoke exercised actions: ${smokeInfo.exercisedActions.join(', ')}`);
 }
 
 main();
