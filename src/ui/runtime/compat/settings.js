@@ -4,8 +4,68 @@ export function createSettingsCompat(sendMessage, eventBus) {
   let cache = Object.create(null);
   let initialized = false;
   let initPromise = null;
+  let storageListenerAttached = false;
+
+  async function handleStorageChange(changes, areaName) {
+    if (areaName !== 'local') {
+      return;
+    }
+
+    await ensureCache();
+
+    const removedKeys = [];
+
+    for (const [key, change] of Object.entries(changes || {})) {
+      if (!change || !Object.prototype.hasOwnProperty.call(change, 'newValue')) {
+        removedKeys.push(key);
+        continue;
+      }
+
+      const nextValue = change.newValue;
+      if (Object.is(cache[key], nextValue)) {
+        continue;
+      }
+
+      cache[key] = nextValue;
+      eventBus.dispatch(`settings/${key}`, nextValue);
+    }
+
+    if (removedKeys.length === 0) {
+      return;
+    }
+
+    const settingsSnapshot = await sendMessage('getAllSettings');
+    cache = { ...(settingsSnapshot || {}) };
+    initialized = true;
+
+    for (const key of removedKeys) {
+      const nextValue = Object.prototype.hasOwnProperty.call(cache, key)
+        ? cache[key]
+        : undefined;
+      eventBus.dispatch(`settings/${key}`, nextValue);
+    }
+  }
+
+  function attachStorageListener() {
+    if (storageListenerAttached) {
+      return;
+    }
+
+    if (!chrome?.storage?.onChanged?.addListener) {
+      return;
+    }
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      handleStorageChange(changes, areaName).catch(error => {
+        console.warn('[Compat][settings] Failed to sync storage change', error);
+      });
+    });
+    storageListenerAttached = true;
+  }
 
   async function ensureCache() {
+    attachStorageListener();
+
     if (initialized) {
       return cache;
     }
