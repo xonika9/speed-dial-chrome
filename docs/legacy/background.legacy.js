@@ -4065,7 +4065,7 @@ defineCustomElement("a-bookmark", Bookmark, t);return window.Bookmark=Bookmark;}
 		this.loadBookmarks();
 	}
 	_updateHeight() {
-		this.height = (api.settings.get("icon-size") + 60) || 140;
+		this.height = (Number(api.settings.get("icon-size")) || 80) + 60;
 		this.style.height = this.height + "px";
 	}
 	bind() {
@@ -4632,15 +4632,15 @@ return window.BookmarksGridview06FolderSetting=BookmarksGridview06FolderSetting;
 	}
 	_loadLayoutParameters() {
 		const BOOKMARK_MIN_GAP = 4;
-		const iconSize = api.settings.get("icon-size");
+		const iconSize = Number(api.settings.get("icon-size")) || 80;
 		this.style.setProperty('--bookmark-icon-size', iconSize + "px");
 		let columnWidth = iconSize + 40 + BOOKMARK_MIN_GAP;
 		let rowHeight = iconSize + 60 + BOOKMARK_MIN_GAP;
 		let columnsMax = 1000;
 		if(!this._disableLayoutSettings) {
-			columnWidth += api.settings.get("column-gap");
-			rowHeight += api.settings.get("row-gap");
-			columnsMax = api.settings.get("columns-max");
+			columnWidth += (Number(api.settings.get("column-gap")) || 46);
+			rowHeight += (Number(api.settings.get("row-gap")) || 16);
+			columnsMax = (Number(api.settings.get("columns-max")) || 25);
 		}
 		this.columnWidth = columnWidth;
 		this.rowHeight = rowHeight;
