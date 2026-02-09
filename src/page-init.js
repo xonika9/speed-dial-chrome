@@ -73,7 +73,7 @@ function sendRuntimeMessageNoThrow(message) {
   });
 }
 
-async function waitForMessageResponse(message, predicate, timeoutMessage) {
+async function waitForMessageResponse(message, predicate, timeoutMessage, isFatal) {
   const maxAttempts = 50;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -82,7 +82,10 @@ async function waitForMessageResponse(message, predicate, timeoutMessage) {
       if (predicate(response)) {
         return;
       }
-    } catch {
+    } catch (error) {
+      if (typeof isFatal === 'function' && isFatal(error)) {
+        throw error;
+      }
       // Service worker can still be starting up.
     }
 
@@ -102,7 +105,8 @@ async function waitForServiceWorker() {
   await waitForMessageResponse(
     { action: 'waitUntilReady' },
     response => Boolean(response && response.ready),
-    'Service worker did not become ready in time'
+    'Service worker did not become ready in time',
+    () => true  // any error from waitUntilReady is fatal (SW init failed)
   );
 }
 
@@ -254,7 +258,7 @@ async function bootstrap() {
         return;
       }
 
-      const styleKeys = ['style/theme', 'style/background', 'style/background-filter', 'style/dock'];
+      const styleKeys = ['style/theme', 'style/background', 'style/background-filter', 'style/dock', 'style/preload-images'];
       if (styleKeys.some(key => key in changes)) {
         updateThemeStyle().catch(console.error);
       }

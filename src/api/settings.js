@@ -176,7 +176,7 @@ export async function remove(key) {
  */
 export async function getAll() {
   await loadSettings();
-  return { ...settingsCache };
+  return { ...defaults, ...settingsCache };
 }
 
 /**
@@ -207,7 +207,7 @@ export async function resetAll() {
  */
 export async function exportSettings() {
   await loadSettings();
-  return JSON.stringify(settingsCache, null, 2);
+  return JSON.stringify({ ...defaults, ...settingsCache }, null, 2);
 }
 
 /**
