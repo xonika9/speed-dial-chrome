@@ -73,13 +73,13 @@ function sendRuntimeMessageNoThrow(message) {
   });
 }
 
-async function waitForServiceWorker() {
+async function waitForMessageResponse(message, predicate, timeoutMessage) {
   const maxAttempts = 50;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const response = await sendRuntimeMessage({ action: 'ping' });
-      if (response && response.pong) {
+      const response = await sendRuntimeMessage(message);
+      if (predicate(response)) {
         return;
       }
     } catch {
@@ -89,7 +89,21 @@ async function waitForServiceWorker() {
     await sleep(100);
   }
 
-  throw new Error('Service worker is not responding to ping');
+  throw new Error(timeoutMessage);
+}
+
+async function waitForServiceWorker() {
+  await waitForMessageResponse(
+    { action: 'ping' },
+    response => Boolean(response && response.pong),
+    'Service worker is not responding to ping'
+  );
+
+  await waitForMessageResponse(
+    { action: 'waitUntilReady' },
+    response => Boolean(response && response.ready),
+    'Service worker did not become ready in time'
+  );
 }
 
 function collectLocalStorageData() {

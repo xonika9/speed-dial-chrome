@@ -25,12 +25,26 @@ console.log('[MV3] Service worker started');
 // Initialize messaging system first (synchronous)
 initMessaging();
 
+let resolveAPIReady;
+let rejectAPIReady;
+const apiReadyPromise = new Promise((resolve, reject) => {
+  resolveAPIReady = resolve;
+  rejectAPIReady = reject;
+});
+
+registerHandler('waitUntilReady', async () => {
+  await apiReadyPromise;
+  return { ready: true };
+});
+
 // Initialize async modules
 async function initializeAPIs() {
   try {
     // Core modules (order matters for dependencies)
     await initSettings();
     initMigration();
+    resolveAPIReady();
+
     initExtensionEvent();
     initBookmarks();
     initOffscreen();
@@ -47,6 +61,7 @@ async function initializeAPIs() {
 
     console.log('[MV3] All APIs initialized');
   } catch (error) {
+    rejectAPIReady(error);
     console.error('[MV3] Failed to initialize APIs:', error);
   }
 }
