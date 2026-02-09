@@ -1,6 +1,7 @@
 /**
  * Icons API - Icon Generation and Management
- * Uses MV3 favicon API and offscreen canvas for generation
+ * Uses web-accessories.com for high-res icons, MV3 favicon API as fallback,
+ * and offscreen canvas for generated icons.
  */
 
 import { registerHandlers } from './messaging.js';
@@ -8,6 +9,12 @@ import { generateIcon as generateViaOffscreen } from './offscreen.js';
 
 // Icon cache using Cache API
 const CACHE_NAME = 'icon-cache-v1';
+
+// Server URL (matches legacy: production vs localhost based on extension ID)
+const PRODUCTION_ID = 'kjkbcegjfanmgocnecnngfcmmojheiam';
+const SERVER_URL = (chrome.runtime.id === PRODUCTION_ID)
+  ? 'https://api.web-accessories.com'
+  : 'http://localhost';
 
 /**
  * Get favicon URL using MV3 API
@@ -143,7 +150,97 @@ export async function loadIconFromUrl(url, options = {}) {
 }
 
 /**
- * Get best icon for a bookmark
+ * Convert blob to data URL
+ */
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Normalize URL for server icon lookup (matches legacy getLookupURL).
+ * Returns protocol + hostname (+ pathname for special domains).
+ */
+function getLookupURL(url) {
+  try {
+    const _url = new URL(url);
+    const hostname = _url.hostname;
+    if (
+      hostname === 'apps.web-accessories.com' ||
+      hostname === 'play.famobi.com' ||
+      hostname.includes('.google.')
+    ) {
+      return _url.protocol + '//' + hostname + _url.pathname;
+    }
+    return _url.protocol + '//' + hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Query web-accessories.com for high-res icon URL.
+ * The server knows where each site keeps its best icon
+ * (apple-touch-icon, manifest icon, og:image, etc.) and returns the direct URL.
+ * Returns the icon URL string, or null if not found.
+ */
+async function fetchWAIconUrl(lookupURL) {
+  const response = await fetch(
+    `${SERVER_URL}/icon/${lookupURL}`,
+    {
+      mode: 'cors',
+      cache: 'reload',
+      headers: new Headers({ accept: 'text/uri-list' })
+    }
+  );
+  if (!response.ok) return null;
+  const iconURL = await response.text();
+  return (iconURL && iconURL.trim()) ? iconURL.trim() : null;
+}
+
+/**
+ * Get high-res icon URL via web-accessories.com, with Cache API persistence.
+ * Returns the icon URL string, or null.
+ */
+async function getWAIcon(bookmarkUrl) {
+  const lookupURL = getLookupURL(bookmarkUrl);
+  if (!lookupURL) return null;
+
+  const cacheUrl = `https://icon-cache/${encodeURIComponent('wa:' + lookupURL)}`;
+
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(cacheUrl);
+
+    if (cached) {
+      return await cached.text();
+    }
+
+    const iconUrl = await fetchWAIconUrl(lookupURL);
+    if (iconUrl) {
+      await cache.put(cacheUrl, new Response(iconUrl));
+      return iconUrl;
+    }
+  } catch (error) {
+    console.warn('[Icons] WA lookup failed:', error);
+  }
+
+  return null;
+}
+
+/**
+ * Get best icon for a bookmark.
+ * Tries sources in order of quality (matching legacy factory chain):
+ *   1. web-accessories.com — returns URL to high-res icon (128-512px)
+ *   2. Chrome /_favicon/ API — built-in, typically 16-32px
+ *   3. Generated letter icon — clean fallback
+ *
+ * Returns either a direct image URL (https://...) or a data URL.
+ * The UI compat layer's dataUrlToImage handles both.
  */
 export async function getBookmarkIcon(bookmark, options = {}) {
   const { size = 64 } = options;
@@ -153,7 +250,13 @@ export async function getBookmarkIcon(bookmark, options = {}) {
     return generateFolderIcon({ size });
   }
 
-  // Try favicon first
+  // 1. Try web-accessories.com for high-res icon URL
+  try {
+    const iconUrl = await getWAIcon(bookmark.url);
+    if (iconUrl) return iconUrl;
+  } catch { /* fall through */ }
+
+  // 2. Try Chrome's built-in /_favicon/ API
   try {
     const faviconUrl = getFaviconUrl(bookmark.url, size);
     const response = await fetch(faviconUrl);
@@ -161,19 +264,14 @@ export async function getBookmarkIcon(bookmark, options = {}) {
     if (response.ok) {
       const blob = await response.blob();
       if (blob.size > 0) {
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => resolve(generateLetterIcon(bookmark.url, { size }));
-          reader.readAsDataURL(blob);
-        });
+        return blobToDataUrl(blob);
       }
     }
   } catch (error) {
     console.warn('[Icons] Favicon fetch failed:', error);
   }
 
-  // Fallback to letter icon
+  // 3. Fallback to generated letter icon
   return generateLetterIcon(bookmark.url, { size });
 }
 
