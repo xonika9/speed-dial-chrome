@@ -6,14 +6,73 @@
 import { registerHandlers } from './messaging.js';
 
 let creating = null; // Prevent concurrent creation
+const OFFSCREEN_DOCUMENT_PATH = 'src/offscreen/offscreen.html';
+const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
+const NORMALIZED_OFFSCREEN_DOCUMENT_URL = normalizeContextURL(OFFSCREEN_DOCUMENT_URL);
+
+function normalizeContextURL(url) {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+
+    if (parsed.pathname.endsWith('/')) {
+      parsed.pathname = parsed.pathname.slice(0, -1);
+    }
+
+    return parsed.toString();
+  } catch {
+    return url.split('#')[0].replace(/\/$/, '');
+  }
+}
+
+/**
+ * Query existing offscreen contexts.
+ * Uses runtime.getContexts when available and falls back to clients.matchAll for Chrome 109 compatibility.
+ */
+async function getExistingOffscreenContexts() {
+  if (chrome.runtime?.getContexts) {
+    try {
+      const contexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT']
+      });
+      return (contexts || []).filter(context => {
+        if (!context.documentUrl) {
+          return true;
+        }
+
+        return normalizeContextURL(context.documentUrl) === NORMALIZED_OFFSCREEN_DOCUMENT_URL;
+      });
+    } catch (error) {
+      console.warn('[Offscreen] runtime.getContexts failed, using fallback:', error);
+    }
+  }
+
+  if (typeof clients !== 'undefined' && clients.matchAll) {
+    try {
+      const clientList = await clients.matchAll({
+        includeUncontrolled: true,
+        type: 'window'
+      });
+      return clientList.filter(client =>
+        normalizeContextURL(client.url) === NORMALIZED_OFFSCREEN_DOCUMENT_URL
+      );
+    } catch (error) {
+      console.warn('[Offscreen] clients.matchAll fallback failed:', error);
+    }
+  }
+
+  return [];
+}
 
 /**
  * Ensure offscreen document exists
  */
 async function ensureOffscreenDocument() {
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
-  });
+  const existingContexts = await getExistingOffscreenContexts();
 
   if (existingContexts.length > 0) {
     return true;
@@ -24,14 +83,28 @@ async function ensureOffscreenDocument() {
     return true;
   }
 
-  creating = chrome.offscreen.createDocument({
-    url: 'src/offscreen/offscreen.html',
-    reasons: ['DOM_PARSER', 'CANVAS'],
-    justification: 'Parse XML/HTML and generate icons using canvas'
-  });
+  creating = (async () => {
+    try {
+      await chrome.offscreen.createDocument({
+        url: OFFSCREEN_DOCUMENT_PATH,
+        reasons: ['DOM_PARSER', 'BLOBS'],
+        justification: 'Parse XML/HTML and generate icons using canvas'
+      });
+    } catch (error) {
+      console.error('[Offscreen] Failed to create offscreen document', {
+        error: error?.message || String(error),
+        hasGetContexts: Boolean(chrome.runtime?.getContexts),
+        offscreenUrl: OFFSCREEN_DOCUMENT_URL
+      });
+      throw error;
+    }
+  })();
 
-  await creating;
-  creating = null;
+  try {
+    await creating;
+  } finally {
+    creating = null;
+  }
   return true;
 }
 
@@ -109,9 +182,7 @@ export async function convertImage(dataUrl, format = 'image/png', quality = 0.92
  * Check if offscreen document exists
  */
 export async function hasOffscreenDocument() {
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
-  });
+  const existingContexts = await getExistingOffscreenContexts();
   return existingContexts.length > 0;
 }
 

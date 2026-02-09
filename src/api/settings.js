@@ -7,7 +7,7 @@ import { registerHandlers } from './messaging.js';
 
 // Default settings values
 const defaults = {
-  'theme': 'suspended',
+  'theme': 'default_white',
   'browser-action': 'default',
   'new-tab-position': 'last',
   'bookmark-opens-in': 'currentTab',

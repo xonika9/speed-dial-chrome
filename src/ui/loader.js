@@ -1,6 +1,6 @@
 /**
  * UI Loader - API Proxy for Page Context
- * Replaces chrome.extension.getBackgroundPage() with messaging
+ * Replaces legacy background-page coupling with messaging
  */
 
 // API Proxy that sends messages to service worker
@@ -58,14 +58,27 @@ const apiProxy = {
 
   // Bookmarks API
   bookmarks: {
-    async getChildren(id = '1') {
-      return apiProxy.sendMessage('getBookmarkChildren', { id });
+    async getChildren(id = '1', callback) {
+      const result = apiProxy.sendMessage('getBookmarkChildren', { id });
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback([]));
+      }
+      return result;
     },
-    async getSingle(id) {
-      return apiProxy.sendMessage('getBookmark', { id });
+    async getSingle(id, callback) {
+      const result = apiProxy.sendMessage('getBookmark', { id });
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback(null));
+      }
+      return result;
     },
-    async getSubTree(id) {
-      return apiProxy.sendMessage('getBookmarkSubTree', { id });
+    async getSubTree(id, callback) {
+      const result = apiProxy.sendMessage('getBookmarkSubTree', { id })
+        .then(node => (node ? [node] : []));
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback([]));
+      }
+      return result;
     },
     async getTree() {
       return apiProxy.sendMessage('getBookmarkTree');
@@ -82,11 +95,40 @@ const apiProxy = {
     async createSafe(bookmark) {
       return apiProxy.sendMessage('createBookmarkSafe', bookmark);
     },
+    async safecreate(bookmark, callback) {
+      const result = apiProxy.sendMessage('createBookmarkSafe', bookmark)
+        .then(response => response?.bookmark || null);
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback(null));
+      }
+      return result;
+    },
+    async safecreatemany(parentId, index, bookmarks, callback) {
+      const result = apiProxy.sendMessage('safeCreateManyBookmarks', { parentId, index, bookmarks });
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback([]));
+      }
+      return result;
+    },
     async update(id, changes) {
       return apiProxy.sendMessage('updateBookmark', { id, changes });
     },
     async move(id, destination) {
       return apiProxy.sendMessage('moveBookmark', { id, destination });
+    },
+    async moveMany(ids, parentId, index, callback) {
+      const result = apiProxy.sendMessage('moveManyBookmarks', { ids, parentId, index });
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback(0));
+      }
+      return result;
+    },
+    async reorderByTitle(parentId, callback) {
+      const result = apiProxy.sendMessage('reorderBookmarksByTitle', { parentId });
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback(null));
+      }
+      return result;
     },
     async remove(id) {
       return apiProxy.sendMessage('removeBookmark', { id });
@@ -96,6 +138,13 @@ const apiProxy = {
     },
     async getRecent(count = 10) {
       return apiProxy.sendMessage('getRecentBookmarks', { count });
+    },
+    async getAllURLS(idOrArray, callback) {
+      const result = apiProxy.sendMessage('getAllBookmarkUrls', { idOrArray });
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback([]));
+      }
+      return result;
     }
   },
 
@@ -115,6 +164,16 @@ const apiProxy = {
     },
     async getBookmarkIcon(bookmark, options) {
       return apiProxy.sendMessage('getBookmarkIcon', { bookmark, options });
+    },
+    async getIconImageBitmap(url, id, callback) {
+      const result = apiProxy.sendMessage('getBookmarkIcon', {
+        bookmark: { id, url },
+        options: { size: 160 }
+      });
+      if (typeof callback === 'function') {
+        result.then(callback).catch(() => callback(null));
+      }
+      return result;
     },
     async clearCache() {
       return apiProxy.sendMessage('clearIconCache');
@@ -179,6 +238,66 @@ const apiProxy = {
     },
     async updateSubscriptions() {
       return apiProxy.sendMessage('updateFeedSubscriptions');
+    }
+  },
+
+  feedSubscriptions: {
+    async add(url, lastReadItemPublished) {
+      return apiProxy.sendMessage('addFeedSubscriptionState', { url, lastReadItemPublished });
+    },
+    async reset(urlOrArray, lastReadItemPublished) {
+      return apiProxy.sendMessage('resetFeedSubscriptionState', { urlOrArray, lastReadItemPublished });
+    },
+    async remove(url) {
+      return apiProxy.sendMessage('removeFeedSubscriptionState', { url });
+    },
+    async removeAll() {
+      return apiProxy.sendMessage('removeAllFeedSubscriptions');
+    },
+    async exists(url) {
+      return apiProxy.sendMessage('feedSubscriptionExists', { url });
+    },
+    async count() {
+      return apiProxy.sendMessage('countFeedSubscriptions');
+    },
+    async getURLS() {
+      return apiProxy.sendMessage('getFeedSubscriptionUrls');
+    }
+  },
+
+  feedSubscriptionsStats: {
+    async getChildrenUnreadItems() {
+      return apiProxy.sendMessage('getFeedChildrenUnreadItems');
+    },
+    async getUnreadItems(bookmarkId) {
+      return apiProxy.sendMessage('getFeedUnreadItems', { bookmarkId });
+    },
+    async getUnreadItemsByURL(url) {
+      return apiProxy.sendMessage('getFeedUnreadItemsByURL', { url });
+    }
+  },
+
+  search: {
+    async getEngineTemplate(engineName) {
+      return apiProxy.sendMessage('getSearchEngineTemplate', { engineName });
+    },
+    async getTemplate(url) {
+      return apiProxy.sendMessage('getSearchTemplate', { url });
+    },
+    async clearCache(urls) {
+      return apiProxy.sendMessage('clearSearchCache', { urls });
+    },
+    async countCached() {
+      return apiProxy.sendMessage('countSearchCache');
+    }
+  },
+
+  iconsUrlMapping: {
+    async getAll() {
+      return apiProxy.sendMessage('getIconsUrlMapping');
+    },
+    async resolve(url) {
+      return apiProxy.sendMessage('resolveIconsUrlMapping', { url });
     }
   },
 
@@ -249,55 +368,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-/**
- * Check if running in MV3
- */
-function isMV3() {
-  return chrome.runtime.getManifest().manifest_version === 3;
-}
-
-/**
- * Perform localStorage migration if needed
- */
-async function performMigrationIfNeeded() {
-  if (!isMV3()) return;
-
-  const needsMigration = await apiProxy.migration.needsMigration();
-  if (!needsMigration) return;
-
-  console.log('[Loader] Performing localStorage migration...');
-
-  // Collect data from localStorage
-  const localStorageData = {};
-  const keysToMigrate = [
-    'style/theme',
-    'style/background',
-    'style/background-filter',
-    'style/dock',
-    'navigation/last-visited-folder',
-    'news-ui/color-scheme',
-    'popover-bookmark-editor/folder'
-  ];
-
-  for (const key of keysToMigrate) {
-    const value = localStorage.getItem(key);
-    if (value !== null) {
-      localStorageData[key] = value;
-    }
-  }
-
-  // Send to service worker for migration
-  const result = await apiProxy.migration.migrateFromPage(localStorageData);
-  console.log('[Loader] Migration complete:', result);
-}
-
 // Export the API proxy
 window.api = apiProxy;
 window.apiProxy = apiProxy;
 window.addEventListener = addEventListener;
 window.removeEventListener = removeEventListener;
-
-// Perform migration on load
-performMigrationIfNeeded().catch(console.error);
 
 console.log('[Loader] UI Loader initialized');

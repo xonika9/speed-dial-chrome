@@ -13,7 +13,12 @@ import { initTheme } from './api/theme.js';
 import { initBrowser } from './api/browser.js';
 import { initExtensionEvent } from './api/extensionEvent.js';
 import { initFeeds } from './api/feeds.js';
+import { initFeedSubscriptions } from './api/feedSubscriptions.js';
+import { initFeedSubscriptionsStats } from './api/feedSubscriptionsStats.js';
+import { initSearch } from './api/search.js';
+import { initIconsUrlMapping } from './api/iconsUrlMapping.js';
 import { initContextMenu } from './api/contextMenu.js';
+import { initRemoteCache, handleRemoteCacheFetch } from './api/remoteCache.js';
 
 console.log('[MV3] Service worker started');
 
@@ -33,7 +38,12 @@ async function initializeAPIs() {
     initTheme();
     initBrowser();
     initFeeds();
+    initFeedSubscriptions();
+    initFeedSubscriptionsStats();
+    initSearch();
+    initIconsUrlMapping();
     initContextMenu();
+    initRemoteCache();
 
     console.log('[MV3] All APIs initialized');
   } catch (error) {
@@ -55,6 +65,13 @@ self.addEventListener('activate', (event) => {
   console.log('[MV3] Service worker activated');
   // Claim clients immediately
   event.waitUntil(clients.claim());
+});
+
+self.addEventListener('fetch', event => {
+  const responsePromise = handleRemoteCacheFetch(event.request);
+  if (responsePromise) {
+    event.respondWith(responsePromise);
+  }
 });
 
 chrome.runtime.onInstalled.addListener((details) => {

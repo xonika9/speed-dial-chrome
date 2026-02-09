@@ -33,6 +33,19 @@ async function getCached(id, fetcher) {
   return data;
 }
 
+function normalizeInsertIndex(parentNodes, index) {
+  if (!Number.isInteger(index)) {
+    return parentNodes.length;
+  }
+  if (index < 0) {
+    return 0;
+  }
+  if (index > parentNodes.length) {
+    return parentNodes.length;
+  }
+  return index;
+}
+
 /**
  * Get bookmark children
  */
@@ -128,6 +141,148 @@ export async function createSafe(bookmark) {
 }
 
 /**
+ * Create many bookmarks safely with legacy-compatible behavior.
+ */
+export async function safeCreateMany(parentId, index, bookmarks = []) {
+  if (parentId === undefined || parentId === null) {
+    throw new Error('parentId is mandatory');
+  }
+
+  if (!Array.isArray(bookmarks) || bookmarks.length === 0) {
+    return [];
+  }
+
+  const parentNodes = await chrome.bookmarks.getChildren(parentId);
+  const startIndex = normalizeInsertIndex(parentNodes || [], index);
+  const createdTopLevelNodes = [];
+
+  const createChildren = async (folderId, children) => {
+    if (!Array.isArray(children) || children.length === 0) {
+      return;
+    }
+    await safeCreateMany(folderId, 0, children);
+  };
+
+  for (let i = 0; i < bookmarks.length; i++) {
+    const bookmark = bookmarks[i] || {};
+    const properties = {
+      parentId,
+      index: startIndex + i,
+      title: bookmark.title || ''
+    };
+
+    if (bookmark.url) {
+      properties.url = bookmark.url;
+    }
+
+    const createdNode = await chrome.bookmarks.create(properties);
+    createdTopLevelNodes.push(createdNode);
+
+    if (!createdNode.url && Array.isArray(bookmark.children) && bookmark.children.length > 0) {
+      await createChildren(createdNode.id, bookmark.children);
+    }
+  }
+
+  clearCache();
+  return createdTopLevelNodes;
+}
+
+/**
+ * Move a set of bookmarks while preserving order.
+ */
+export async function moveMany(ids = [], parentId, index) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return 0;
+  }
+
+  const siblings = await chrome.bookmarks.getChildren(parentId);
+  let destinationIndex = normalizeInsertIndex(siblings || [], index);
+  let movedNodes = 0;
+
+  for (const id of ids) {
+    const moved = await chrome.bookmarks.move(id, {
+      parentId,
+      index: destinationIndex
+    });
+    if (moved) {
+      movedNodes += 1;
+      destinationIndex += 1;
+    }
+  }
+
+  clearCache();
+  return movedNodes;
+}
+
+/**
+ * Reorder children of a folder by title.
+ */
+export async function reorderByTitle(parentId) {
+  const children = await chrome.bookmarks.getChildren(parentId);
+  const sorted = [...children].sort((a, b) =>
+    (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase())
+  );
+
+  for (let i = 0; i < sorted.length; i++) {
+    await chrome.bookmarks.move(sorted[i].id, { parentId, index: i });
+  }
+
+  clearCache();
+  return { success: true };
+}
+
+/**
+ * Collect all URLs recursively from one or many bookmark tree roots.
+ */
+export async function getAllURLs(idOrArray) {
+  const ids = Array.isArray(idOrArray) ? idOrArray : [idOrArray];
+  const urls = [];
+
+  const collectUrls = node => {
+    if (!node) {
+      return;
+    }
+
+    if (node.url) {
+      urls.push(node.url);
+    }
+
+    if (Array.isArray(node.children)) {
+      node.children.forEach(collectUrls);
+    }
+  };
+
+  for (const id of ids) {
+    const tree = await chrome.bookmarks.getSubTree(id);
+    if (tree && tree[0]) {
+      collectUrls(tree[0]);
+    }
+  }
+
+  return urls;
+}
+
+const LEGACY_BOOKMARK_ACTIONS = {
+  created: 'bookmarkCreated',
+  removed: 'bookmarkRemoved',
+  changed: 'bookmarkChanged',
+  moved: 'bookmarkMoved',
+  childrenReordered: 'bookmarksReordered'
+};
+
+function dispatchBookmarkBroadcast(eventType, payload) {
+  const action = `bookmarks/${eventType}`;
+  const legacyAction = LEGACY_BOOKMARK_ACTIONS[eventType];
+
+  broadcast({ action, ...payload }).catch(() => {});
+  broadcast({ action: 'bookmarks/change', ...payload }).catch(() => {});
+
+  if (legacyAction) {
+    broadcast({ action: legacyAction, ...payload }).catch(() => {});
+  }
+}
+
+/**
  * Update a bookmark
  */
 export async function update(id, changes) {
@@ -197,27 +352,27 @@ export function initBookmarks() {
   // Listen for bookmark changes and broadcast
   chrome.bookmarks.onCreated.addListener((id, bookmark) => {
     clearCache();
-    broadcast({ action: 'bookmarkCreated', id, bookmark }).catch(() => {});
+    dispatchBookmarkBroadcast('created', { id, bookmark });
   });
 
   chrome.bookmarks.onRemoved.addListener((id, removeInfo) => {
     clearCache();
-    broadcast({ action: 'bookmarkRemoved', id, removeInfo }).catch(() => {});
+    dispatchBookmarkBroadcast('removed', { id, removeInfo });
   });
 
   chrome.bookmarks.onChanged.addListener((id, changeInfo) => {
     clearCache(id);
-    broadcast({ action: 'bookmarkChanged', id, changeInfo }).catch(() => {});
+    dispatchBookmarkBroadcast('changed', { id, changeInfo });
   });
 
   chrome.bookmarks.onMoved.addListener((id, moveInfo) => {
     clearCache();
-    broadcast({ action: 'bookmarkMoved', id, moveInfo }).catch(() => {});
+    dispatchBookmarkBroadcast('moved', { id, moveInfo });
   });
 
   chrome.bookmarks.onChildrenReordered.addListener((id, reorderInfo) => {
     clearCache();
-    broadcast({ action: 'bookmarksReordered', id, reorderInfo }).catch(() => {});
+    dispatchBookmarkBroadcast('childrenReordered', { id, reorderInfo });
   });
 
   // Register message handlers
@@ -234,6 +389,11 @@ export function initBookmarks() {
     moveBookmark: async ({ id, destination }) => move(id, destination),
     removeBookmark: async ({ id }) => remove(id),
     removeBookmarkTree: async ({ id }) => removeTree(id),
+    safeCreateManyBookmarks: async ({ parentId, index, bookmarks }) =>
+      safeCreateMany(parentId, index, bookmarks),
+    moveManyBookmarks: async ({ ids, parentId, index }) => moveMany(ids, parentId, index),
+    reorderBookmarksByTitle: async ({ parentId }) => reorderByTitle(parentId),
+    getAllBookmarkUrls: async ({ idOrArray }) => getAllURLs(idOrArray),
     getRecentBookmarks: async ({ count }) => getRecent(count),
     getBookmarkFolderCount: async ({ id }) => getFolderCount(id),
     clearBookmarkCache: async () => {
@@ -254,10 +414,14 @@ export default {
   search,
   create,
   createSafe,
+  safeCreateMany,
   update,
   move,
+  moveMany,
+  reorderByTitle,
   remove,
   removeTree,
+  getAllURLs,
   getRecent,
   isFolder,
   getFolderCount,

@@ -228,6 +228,9 @@ export async function addSubscription(url, options = {}) {
     addedAt: Date.now()
   };
   await setSetting('feed-subscriptions', subscriptions);
+  broadcast({ action: 'feedSubscriptions/added', urls: [url] }).catch(() => {});
+  broadcast({ action: 'feedSubscriptionsStats/change', urls: [url] }).catch(() => {});
+  broadcast({ action: 'feedSubscriptionsBookmarks/change', urls: [url] }).catch(() => {});
   return subscriptions;
 }
 
@@ -238,6 +241,9 @@ export async function removeSubscription(url) {
   const subscriptions = getSubscriptions();
   delete subscriptions[url];
   await setSetting('feed-subscriptions', subscriptions);
+  broadcast({ action: 'feedSubscriptions/removed', urls: [url] }).catch(() => {});
+  broadcast({ action: 'feedSubscriptionsStats/change', urls: [url] }).catch(() => {});
+  broadcast({ action: 'feedSubscriptionsBookmarks/change', urls: [url] }).catch(() => {});
   return subscriptions;
 }
 
@@ -257,6 +263,9 @@ export async function updateSubscriptions() {
   }
 
   broadcast({ action: 'feedsUpdated', results }).catch(() => {});
+  broadcast({ action: 'feedSubscriptions/updated', results }).catch(() => {});
+  broadcast({ action: 'feedSubscriptionsStats/change', results }).catch(() => {});
+  broadcast({ action: 'feedSubscriptionsBookmarks/change', results }).catch(() => {});
   return results;
 }
 

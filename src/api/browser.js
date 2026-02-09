@@ -6,6 +6,8 @@
 import { registerHandlers } from './messaging.js';
 import { get as getSetting } from './settings.js';
 
+const POPUP_PAGE_URL = 'page.html?theme&ui=PopupUI&style=width:800px;height:600px;overflow:hidden;';
+
 /**
  * Open URL in tab based on settings
  */
@@ -102,15 +104,17 @@ export async function executeBookmarklet(code) {
   }
 
   // Extract the actual code from javascript: URL
-  const scriptCode = code.replace(/^javascript:/i, '');
+  const scriptCode = decodeURIComponent(code.replace(/^javascript:/i, ''));
 
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: (code) => {
         try {
-          // eslint-disable-next-line no-eval
-          eval(decodeURIComponent(code));
+          const script = document.createElement('script');
+          script.textContent = code;
+          (document.head || document.documentElement).appendChild(script);
+          script.remove();
         } catch (e) {
           console.error('Bookmarklet error:', e);
         }
@@ -207,8 +211,8 @@ async function onActionClicked(tab) {
 
     case 'default':
     default:
-      // Open new tab page
-      await chrome.tabs.create({ url: chrome.runtime.getURL('page.html') });
+      // Open Chrome New Tab so chrome_url_overrides route is applied consistently.
+      await chrome.tabs.create({ url: 'chrome://newtab' });
       break;
   }
 }
@@ -225,7 +229,7 @@ export function initBrowser() {
     if (areaName === 'local' && changes['browser-action']) {
       const newValue = changes['browser-action'].newValue;
       if (newValue === 'popup') {
-        setPopup('page.html?ui=PopupUI');
+        setPopup(POPUP_PAGE_URL);
       } else {
         setPopup('');
       }
@@ -235,7 +239,7 @@ export function initBrowser() {
   // Set initial popup state
   const browserAction = getSetting('browser-action');
   if (browserAction === 'popup') {
-    setPopup('page.html?ui=PopupUI');
+    setPopup(POPUP_PAGE_URL);
   }
 
   registerHandlers({

@@ -6,17 +6,21 @@
 import { registerHandlers } from './messaging.js';
 
 const MIGRATION_KEY = 'mv3-migration-complete';
+const MIGRATE_PREFIXES = ['style/'];
 
 // Keys that need to be migrated from localStorage
 const MIGRATE_KEYS = [
-  'style/theme',
-  'style/background',
-  'style/background-filter',
-  'style/dock',
   'navigation/last-visited-folder',
   'news-ui/color-scheme',
   'popover-bookmark-editor/folder'
 ];
+
+function isMigratableKey(key) {
+  if (!key || typeof key !== 'string') {
+    return false;
+  }
+  return MIGRATE_KEYS.includes(key) || MIGRATE_PREFIXES.some(prefix => key.startsWith(prefix));
+}
 
 /**
  * Check if migration is needed
@@ -31,21 +35,39 @@ export async function needsMigration() {
  * This needs to be called from a page context where localStorage is available
  */
 export async function migrateFromPage(localStorageData) {
+  if (!(await needsMigration())) {
+    return {
+      success: true,
+      skipped: true,
+      reason: 'already-migrated',
+      migratedKeys: [],
+      timestamp: Date.now()
+    };
+  }
+
+  if (!localStorageData || typeof localStorageData !== 'object') {
+    throw new Error('localStorageData must be an object');
+  }
+
   const migrated = {};
 
-  for (const key of MIGRATE_KEYS) {
-    if (localStorageData[key] !== undefined) {
-      migrated[key] = localStorageData[key];
+  for (const [key, value] of Object.entries(localStorageData)) {
+    if (isMigratableKey(key) && value !== undefined) {
+      migrated[key] = value;
     }
   }
 
-  // Save migrated data
-  if (Object.keys(migrated).length > 0) {
-    await chrome.storage.local.set(migrated);
-  }
+  try {
+    // Save migrated data
+    if (Object.keys(migrated).length > 0) {
+      await chrome.storage.local.set(migrated);
+    }
 
-  // Mark migration as complete
-  await chrome.storage.local.set({ [MIGRATION_KEY]: Date.now() });
+    // Mark migration as complete only if all writes succeeded
+    await chrome.storage.local.set({ [MIGRATION_KEY]: Date.now() });
+  } catch (error) {
+    throw new Error(`Migration failed: ${error.message}`);
+  }
 
   return {
     success: true,
@@ -69,7 +91,7 @@ export async function getMigrationStatus() {
 
   return {
     completed: false,
-    keysToMigrate: MIGRATE_KEYS
+    keysToMigrate: [...MIGRATE_KEYS, 'style/*']
   };
 }
 

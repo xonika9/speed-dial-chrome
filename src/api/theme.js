@@ -5,6 +5,39 @@
 import { registerHandlers, broadcast } from './messaging.js';
 import { get as getSetting } from './settings.js';
 
+const DEFAULT_THEME = 'default_white';
+const THEME_LIST_PATH = '/data/themes.json';
+let themeListCache = null;
+
+async function loadThemeList() {
+  if (themeListCache) {
+    return themeListCache;
+  }
+
+  try {
+    const response = await fetch(chrome.runtime.getURL(THEME_LIST_PATH));
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const parsed = await response.json();
+    if (!Array.isArray(parsed)) {
+      throw new Error('Invalid themes list format');
+    }
+
+    themeListCache = parsed.filter(name => typeof name === 'string' && name.length > 0);
+  } catch (error) {
+    console.warn('[Theme] Failed to load theme list, using fallback:', error);
+    themeListCache = [DEFAULT_THEME];
+  }
+
+  if (!themeListCache.includes(DEFAULT_THEME)) {
+    themeListCache.unshift(DEFAULT_THEME);
+  }
+
+  return themeListCache;
+}
+
 /**
  * Generate background CSS based on settings
  */
@@ -101,22 +134,34 @@ export function generateDockCSS() {
  * Get full theme CSS
  */
 export async function getThemeCSS() {
-  const themeName = getSetting('theme') || 'suspended';
+  const requestedTheme = getSetting('theme') || DEFAULT_THEME;
+  const availableThemes = await loadThemeList();
+  const normalizedTheme = availableThemes.includes(requestedTheme)
+    ? requestedTheme
+    : DEFAULT_THEME;
 
-  // The theme CSS file path
-  const themePath = `/themes/${themeName}/theme.css`;
+  const candidatePaths = [
+    `/themes/${normalizedTheme}/style.css`
+  ];
 
-  try {
-    const response = await fetch(chrome.runtime.getURL(themePath));
-    if (!response.ok) {
-      console.warn(`[Theme] Failed to load theme: ${themeName}`);
-      return '';
-    }
-    return await response.text();
-  } catch (error) {
-    console.error('[Theme] Error loading theme:', error);
-    return '';
+  if (normalizedTheme !== DEFAULT_THEME) {
+    candidatePaths.push(`/themes/${DEFAULT_THEME}/style.css`);
   }
+
+  for (const themePath of candidatePaths) {
+    try {
+      const response = await fetch(chrome.runtime.getURL(themePath));
+      if (!response.ok) {
+        continue;
+      }
+      return await response.text();
+    } catch {
+      // Try next candidate path
+    }
+  }
+
+  console.warn(`[Theme] Failed to load theme CSS for "${requestedTheme}"`);
+  return '';
 }
 
 /**
@@ -157,33 +202,24 @@ export async function getCombinedStyles() {
 /**
  * List available themes
  */
-export function listThemes() {
-  // This would need to be updated with actual theme list
-  return [
-    'suspended',
-    'light',
-    'dark',
-    'blue',
-    'green',
-    'purple',
-    'red',
-    'orange',
-    'pink',
-    'teal'
-  ];
+export async function listThemes() {
+  return loadThemeList();
 }
 
 /**
  * Apply theme change
  */
 export async function applyTheme(themeName) {
+  const availableThemes = await loadThemeList();
+  const normalizedTheme = availableThemes.includes(themeName) ? themeName : DEFAULT_THEME;
+
   // Broadcast theme change to all views
   await broadcast({
     action: 'themeChanged',
-    theme: themeName
+    theme: normalizedTheme
   });
 
-  return { success: true, theme: themeName };
+  return { success: true, theme: normalizedTheme };
 }
 
 /**

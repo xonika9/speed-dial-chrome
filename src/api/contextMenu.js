@@ -3,7 +3,16 @@
  */
 
 import { registerHandlers } from './messaging.js';
-import { get as getSetting } from './settings.js';
+import {
+  get as getSetting,
+  set as setSetting,
+  setMultiple as setMultipleSettings
+} from './settings.js';
+
+const MENU_SHOW_POPUP = 'show-favorites-in-popup';
+const MENU_SETTINGS = 'settings';
+const MENU_HELP = 'help';
+const MENU_SET_WALLPAPER = 'set-wallpaper';
 
 // Track created menu items
 const menuItems = new Map();
@@ -70,103 +79,104 @@ export function removeAllMenuItems() {
   });
 }
 
+function openHelp(tab) {
+  const url = 'chrome://newtab/#help';
+
+  if (tab?.incognito) {
+    chrome.windows.create({ url });
+    return;
+  }
+
+  if (tab?.windowId) {
+    chrome.tabs.create({
+      url,
+      active: true,
+      windowId: tab.windowId,
+      index: 99999
+    });
+    return;
+  }
+
+  chrome.tabs.create({ url, active: true });
+}
+
 /**
  * Create the default extension context menu
  */
 export function createDefaultMenu() {
-  // Remove any existing items first
   removeAllMenuItems();
 
-  // Parent menu
-  createMenuItem('favorites-menu', {
-    title: chrome.i18n.getMessage('extension_name') || 'Favorites',
-    contexts: ['page', 'frame', 'selection', 'link', 'editable', 'image', 'video', 'audio']
-  });
-
-  // Open in popup option
-  const browserAction = getSetting('browser-action');
-  createMenuItem('open-popup', {
-    title: chrome.i18n.getMessage('menu_open_popup') || 'Open as Popup',
+  createMenuItem(MENU_SHOW_POPUP, {
+    title: chrome.i18n.getMessage('show_favorites_in_popup') || 'Show Favorites in Popup',
     contexts: ['action'],
     type: 'checkbox',
-    checked: browserAction === 'popup'
+    checked: getSetting('browser-action') === 'popup'
   });
 
-  // Settings
-  createMenuItem('open-settings', {
+  createMenuItem(MENU_SETTINGS, {
     title: chrome.i18n.getMessage('settings') || 'Settings',
-    parentId: 'favorites-menu',
-    contexts: ['page', 'frame']
+    contexts: ['action']
   });
 
-  // Separator
-  createMenuItem('separator-1', {
-    type: 'separator',
-    parentId: 'favorites-menu',
-    contexts: ['page', 'frame']
+  createMenuItem(MENU_HELP, {
+    title: chrome.i18n.getMessage('help') || 'Help',
+    contexts: ['action']
   });
 
-  // Add bookmark
-  createMenuItem('add-bookmark', {
-    title: chrome.i18n.getMessage('menu_add_bookmark') || 'Add this page to Favorites',
-    parentId: 'favorites-menu',
-    contexts: ['page', 'frame']
-  });
-
-  // Add link as bookmark
-  createMenuItem('add-link-bookmark', {
-    title: chrome.i18n.getMessage('menu_add_link') || 'Add link to Favorites',
-    parentId: 'favorites-menu',
-    contexts: ['link']
+  createMenuItem(MENU_SET_WALLPAPER, {
+    title: chrome.i18n.getMessage('set_wallpaper_') || 'Set wallpaper',
+    contexts: ['image']
   });
 }
 
 /**
  * Handle context menu clicks
  */
-function onMenuClicked(info, tab) {
-  const { menuItemId, linkUrl, pageUrl, selectionText, checked } = info;
+async function onMenuClicked(info, tab) {
+  const { menuItemId, checked, srcUrl, wasChecked } = info;
 
-  switch (menuItemId) {
-    case 'open-popup':
-      // Toggle popup mode
-      const newValue = checked ? 'popup' : 'default';
-      chrome.storage.local.set({ 'browser-action': newValue });
-      break;
+  try {
+    switch (menuItemId) {
+      case MENU_SHOW_POPUP: {
+        const nextChecked = typeof checked === 'boolean' ? checked : !wasChecked;
+        const newValue = nextChecked ? 'popup' : 'default';
+        await setSetting('browser-action', newValue);
+        break;
+      }
 
-    case 'open-settings':
-      chrome.tabs.create({
-        url: '/page.html?ui=SettingsUI&title=settings',
-        active: true
-      });
-      break;
-
-    case 'add-bookmark':
-      // Open bookmark editor for current page
-      chrome.tabs.create({
-        url: `/page.html?ui=AddBookmarkUI&url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(tab?.title || '')}`,
-        active: true
-      });
-      break;
-
-    case 'add-link-bookmark':
-      // Open bookmark editor for link
-      if (linkUrl) {
+      case MENU_SETTINGS:
         chrome.tabs.create({
-          url: `/page.html?ui=AddBookmarkUI&url=${encodeURIComponent(linkUrl)}`,
+          url: '/page.html?ui=SettingsUI&title=settings#favorites',
           active: true
         });
-      }
-      break;
+        break;
 
-    default:
-      // Check for custom handlers
-      if (menuItems.has(menuItemId)) {
-        const item = menuItems.get(menuItemId);
-        if (item.onClick) {
-          item.onClick(info, tab);
+      case MENU_HELP:
+        openHelp(tab);
+        break;
+
+      case MENU_SET_WALLPAPER:
+        if (!srcUrl) {
+          return;
         }
-      }
+
+        await setMultipleSettings({
+          'background-type': 'web',
+          'background-image-url': srcUrl,
+          'background-image-file': ''
+        });
+        break;
+
+      default:
+        if (menuItems.has(menuItemId)) {
+          const item = menuItems.get(menuItemId);
+          if (item.onClick) {
+            item.onClick(info, tab);
+          }
+        }
+    }
+  } catch (error) {
+    console.error('[ContextMenu] Failed to handle menu click:', error);
   }
 }
 
@@ -174,22 +184,18 @@ function onMenuClicked(info, tab) {
  * Initialize context menu module
  */
 export function initContextMenu() {
-  // Create default menu
   createDefaultMenu();
 
-  // Listen for clicks
   chrome.contextMenus.onClicked.addListener(onMenuClicked);
 
-  // Update menu when settings change
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'local' && changes['browser-action']) {
-      updateMenuItem('open-popup', {
+      updateMenuItem(MENU_SHOW_POPUP, {
         checked: changes['browser-action'].newValue === 'popup'
       });
     }
   });
 
-  // Register message handlers
   registerHandlers({
     createContextMenuItem: async ({ id, options }) => {
       createMenuItem(id, options);

@@ -1,6 +1,6 @@
 /**
  * Extension Event API - Event Broadcasting System
- * Replaces chrome.extension.getViews() with message-based broadcasting
+ * Replaces legacy extension view enumeration with message-based broadcasting
  */
 
 import { registerHandlers } from './messaging.js';

@@ -1,0 +1,126 @@
+import { isAsyncValue, withOptionalCallback } from './utils.js';
+
+export function createSettingsCompat(sendMessage, eventBus) {
+  let cache = Object.create(null);
+  let initialized = false;
+  let initPromise = null;
+
+  async function ensureCache() {
+    if (initialized) {
+      return cache;
+    }
+
+    if (!initPromise) {
+      initPromise = sendMessage('getAllSettings')
+        .then(settings => {
+          cache = { ...(settings || {}) };
+          initialized = true;
+          return cache;
+        })
+        .finally(() => {
+          initPromise = null;
+        });
+    }
+
+    return initPromise;
+  }
+
+  function readFromCache(key, fallback = undefined) {
+    if (!initialized) {
+      return fallback;
+    }
+    return Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : fallback;
+  }
+
+  const settings = {
+    async ready() {
+      await ensureCache();
+      return true;
+    },
+    get(key, callback) {
+      const result = readFromCache(key, undefined);
+      if (typeof callback === 'function') {
+        callback(result);
+      }
+      return result;
+    },
+    getAsync(key, callback) {
+      const result = ensureCache().then(() => readFromCache(key, undefined));
+      return withOptionalCallback(result, callback);
+    },
+    set(key, value, callback) {
+      const result = sendMessage('setSetting', { key, value })
+        .then(() => ensureCache())
+        .then(() => {
+          cache[key] = value;
+          eventBus.dispatch(`settings/${key}`, value);
+          return value;
+        });
+      return withOptionalCallback(result, callback);
+    },
+    setMultiple(values, callback) {
+      const result = sendMessage('setMultipleSettings', { settings: values })
+        .then(() => ensureCache())
+        .then(() => {
+          for (const [key, value] of Object.entries(values || {})) {
+            cache[key] = value;
+            eventBus.dispatch(`settings/${key}`, value);
+          }
+          return values;
+        });
+      return withOptionalCallback(result, callback);
+    },
+    remove(key, callback) {
+      const result = sendMessage('removeSetting', { key })
+        .then(() => ensureCache())
+        .then(() => {
+          delete cache[key];
+          eventBus.dispatch(`settings/${key}`, undefined);
+          return true;
+        });
+      return withOptionalCallback(result, callback);
+    },
+    getAll(callback) {
+      const result = ensureCache().then(() => ({ ...cache }));
+      return withOptionalCallback(result, callback);
+    },
+    resetAll(callback) {
+      const result = sendMessage('resetAllSettings')
+        .then(settingsSnapshot => {
+          cache = { ...(settingsSnapshot || {}) };
+          initialized = true;
+          Object.keys(cache).forEach(key => {
+            eventBus.dispatch(`settings/${key}`, cache[key]);
+          });
+          return { ...cache };
+        });
+      return withOptionalCallback(result, callback);
+    },
+    export(callback) {
+      const result = sendMessage('exportSettings');
+      return withOptionalCallback(result, callback);
+    },
+    import(json, callback) {
+      const result = sendMessage('importSettings', { json })
+        .then(settingsSnapshot => {
+          cache = { ...(settingsSnapshot || {}) };
+          initialized = true;
+          Object.keys(cache).forEach(key => {
+            eventBus.dispatch(`settings/${key}`, cache[key]);
+          });
+          return { ...cache };
+        });
+      return withOptionalCallback(result, callback);
+    },
+    readSync(key, fallback = undefined) {
+      const value = settings.get(key, null);
+      return isAsyncValue(value) ? fallback : value;
+    }
+  };
+
+  return settings;
+}
+
+export default {
+  createSettingsCompat
+};
