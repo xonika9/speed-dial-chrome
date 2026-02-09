@@ -4065,7 +4065,7 @@ defineCustomElement("a-bookmark", Bookmark, t);return window.Bookmark=Bookmark;}
 		this.loadBookmarks();
 	}
 	_updateHeight() {
-		this.height = (settings.get("icon-size") + 60) || 140;
+		this.height = (api.settings.get("icon-size") + 60) || 140;
 		this.style.height = this.height + "px";
 	}
 	bind() {
@@ -4199,7 +4199,7 @@ defineCustomElement("a-bookmarks-for-internal-pages-ui", BookmarksForInternalPag
 		api.browser.openInNewWindow(bookmark.href, incognito);
 	}
 	openBookmark(bookmark) {
-		if(settings.get("open-bookmarks-in-new-tab")) {
+		if(api.settings.get("open-bookmarks-in-new-tab")) {
 			if(bookmark.url)
 				this.openBookmarkInNewTab(bookmark, true);
 			else
@@ -4632,7 +4632,7 @@ return window.BookmarksGridview06FolderSetting=BookmarksGridview06FolderSetting;
 	}
 	_loadLayoutParameters() {
 		const BOOKMARK_MIN_GAP = 4;
-		const iconSize = settings.get("icon-size");
+		const iconSize = api.settings.get("icon-size");
 		this.style.setProperty('--bookmark-icon-size', iconSize + "px");
 		let columnWidth = iconSize + 40 + BOOKMARK_MIN_GAP;
 		let rowHeight = iconSize + 60 + BOOKMARK_MIN_GAP;
@@ -4715,7 +4715,7 @@ return window.BookmarksGridview08Edit=BookmarksGridview08Edit;}}}
 	}
 	onBadgeclick(event) {
 		if(event.target.url) {
-			if(settings.get("open-bookmarks-in-new-tab")) {
+			if(api.settings.get("open-bookmarks-in-new-tab")) {
 				api.browser.openInNewTab("chrome://newtab/#news?" + event.target.id, window, true);
 			}
 			else {
@@ -5809,7 +5809,7 @@ defineCustomElement("a-custom-element", CustomElement, t);return window.CustomEl
 		if(oldClock)
 			oldClock.remove();
 		let newClock;
-		switch(settings.get("dash-clock")) {
+		switch(api.settings.get("dash-clock")) {
 			case "AC-1":
 				initClockAnalog1(window);
 				newClock = document.createElement("a-clock-analog-1");
@@ -9778,7 +9778,7 @@ defineCustomElement("a-selector", Selector, t);return window.Selector=Selector;}
 					event.preventDefault();
 					api.browser.openInPopupWindow(
 						"chrome-theme-popup",
-						api.theme.getMatchingChromeTheme( settings.get("theme") ) || "https://chrome.google.com/webstore/category/themes",
+						api.theme.getMatchingChromeTheme( api.settings.get("theme") ) || "https://chrome.google.com/webstore/category/themes",
 						1100,
 						700,
 						"normal"
