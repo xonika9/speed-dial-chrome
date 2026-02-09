@@ -919,7 +919,7 @@ return window.BookmarksGridview06FolderSetting=BookmarksGridview06FolderSetting;
 	}
 	_loadLayoutParameters() {
 		const BOOKMARK_MIN_GAP = 4;
-		const iconSize = settings.get("icon-size");
+		const iconSize = api.settings.get("icon-size");
 		this.style.setProperty('--bookmark-icon-size', iconSize + "px");
 		let columnWidth = iconSize + 40 + BOOKMARK_MIN_GAP;
 		let rowHeight = iconSize + 60 + BOOKMARK_MIN_GAP;
