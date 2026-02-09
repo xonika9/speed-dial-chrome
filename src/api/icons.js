@@ -24,8 +24,9 @@ export function getFaviconUrl(pageUrl, size = 32) {
  */
 async function getCachedIcon(key, generator) {
   try {
+    const cacheUrl = `https://icon-cache/${encodeURIComponent(key)}`;
     const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(key);
+    const cached = await cache.match(cacheUrl);
 
     if (cached) {
       return await cached.text();
@@ -34,7 +35,7 @@ async function getCachedIcon(key, generator) {
     const dataUrl = await generator();
 
     // Cache the result
-    await cache.put(key, new Response(dataUrl));
+    await cache.put(cacheUrl, new Response(dataUrl));
 
     return dataUrl;
   } catch (error) {
